@@ -1,0 +1,30 @@
+# Headless service for internal communication
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-internal
+  namespace: kafka-common
+spec:
+  clusterIP: None
+  ports:
+    - port: 9092
+      name: broker
+    - port: 9093
+      name: controller
+  selector:
+    app: kafka
+
+---
+# For clients
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: kafka-common
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka
+  ports:
+    - port: 9092
+      targetPort: 9092

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+  namespace: kafka-common
+spec:
+  serviceName: kafka-internal
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: apache/kafka:4.2.0
+          ports:
+            - containerPort: 9092
+            - containerPort: 9093
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /kafka/data
+          command:
+            - sh
+            - -c
+            - |
+              export KAFKA_NODE_ID=$(echo ${HOSTNAME##*-})
+              export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${HOSTNAME}.kafka-internal.kafka-common.svc.cluster.local:9092
+              echo "KAFKA_NODE_ID=$KAFKA_NODE_ID"
+              echo "KAFKA_ADVERTISED_LISTENERS=$KAFKA_ADVERTISED_LISTENERS"
+              exec /etc/kafka/docker/run
+          env:
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_CLUSTER_ID
+              value: "kraft-cluster-1"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "0@kafka-0.kafka-internal.kafka-common.svc.cluster.local:9093,1@kafka-1.kafka-internal.kafka-common.svc.cluster.local:9093,2@kafka-2.kafka-internal.kafka-common.svc.cluster.local:9093"
+            - name: KAFKA_LOG_DIRS
+              value: "/kafka/data"
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

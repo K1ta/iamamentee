@@ -1,0 +1,65 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/caarlos0/env"
+)
+
+type Config struct {
+	Listen       string   `env:"APP_LISTEN"`
+	PgHost       string   `env:"APP_PG_HOST"`
+	PgDatabase   string   `env:"APP_PG_DATABASE"`
+	PgUser       string   `env:"APP_PG_USER"`
+	PgPassword   string   `env:"APP_PG_PASSWORD"`
+	KafkaBrokers []string `env:"APP_KAFKA_BROKERS"`
+}
+
+func Run(ctx context.Context) error {
+	var conf Config
+	if err := env.Parse(&conf); err != nil {
+		log.Panicln("parse config:", err)
+	}
+
+	db, err := NewDB(ctx, conf.PgUser, conf.PgPassword, conf.PgHost, conf.PgDatabase)
+	if err != nil {
+		return fmt.Errorf("new db: %w", err)
+	}
+	repo := NewSearchRepository(db)
+	handler := NewSearchHandler(repo)
+	router := NewRouter(handler)
+	server := http.Server{
+		Addr:    conf.Listen,
+		Handler: router,
+	}
+	errCh := make(chan error)
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			errCh <- fmt.Errorf("run server: %w", err)
+		}
+	}()
+
+	wg := new(sync.WaitGroup)
+	go ConsumeProductEvents(ctx, wg, repo, conf.KafkaBrokers)
+
+	log.Println("service is running")
+	select {
+	case <-ctx.Done():
+	case err := <-errCh:
+		log.Println("caught error:", err)
+	}
+	log.Println("stopping service")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("shutdown server: %w", err)
+	}
+	wg.Wait()
+	return nil
+}

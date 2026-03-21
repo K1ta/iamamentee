@@ -1,0 +1,76 @@
+.SILENT:
+
+SERVICES := product-management products
+
+LOCAL_PORT=9999
+DB_PORT=5432
+PG_PASSWORD=password
+PG_USER=admin
+
+# backend services
+build-%:
+	eval $$(minikube docker-env) && \
+	docker build -t $*:latest backend/$*
+
+deploy-%:
+	if [ -f backend/$*/dev.env ]; then \
+		kubectl create configmap $*-config \
+		--from-env-file=backend/$*/dev.env \
+		-n $* \
+		--dry-run=client -o yaml | kubectl apply -f -; \
+	fi
+	kubectl rollout restart deployment $* -n $*
+
+migrate-up-%:
+	kubectl port-forward svc/postgres -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+	echo PID=$$PF_PID; \
+	sleep 1; \
+	goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" up -dir backend/$*/migrations; \
+	kill $$PF_PID
+
+migrate-down-%:
+	kubectl port-forward svc/postgres -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+	echo PID=$$PF_PID; \
+	sleep 1; \
+	goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" down -dir backend/$*/migrations; \
+	kill $$PF_PID
+
+.PHONY: release release-%
+release-%:
+	make migrate-up-$*
+	make build-$*
+	make deploy-$*
+
+release: $(SERVICES:%=release-%)
+
+# k8s
+apply:
+	kubectl apply -f ./k8s -R --wait
+
+port-forward-%:
+	kubectl port-forward svc/$* 8080:80 -n $*
+
+port-forward-ingress:
+	kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
+
+logs-%:
+	kubectl logs -f svc/$* -n $*
+
+minikube-up:
+	minikube start --driver=docker --memory=4096 --cpus=4 --disk-size=20gb
+
+minikube-down:
+	minikube stop
+	minikube delete
+
+minikube-restart: minikube-down minikube-up
+
+restart-kafka:
+	kubectl rollout restart statefulset kafka -n kafka-common
+
+create-topic-%:
+	kubectl exec -it kafka-0 -n kafka-common -- \
+	/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
+	--create --topic $* \
+	--partitions 3 \
+	--replication-factor 2

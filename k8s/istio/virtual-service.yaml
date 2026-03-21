@@ -1,0 +1,26 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: product-routing
+spec:
+  hosts:
+    - "*"
+  gateways:
+    - main-gateway
+  http:
+    - match:
+        - uri:
+            prefix: /product
+      route:
+        - destination:
+            host: product-management
+            port:
+              number: 80
+    - match:
+        - uri:
+            prefix: /products/search
+      route:
+        - destination:
+            host: products
+            port:
+              number: 80
