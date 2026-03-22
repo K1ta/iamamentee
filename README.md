@@ -1,5 +1,7 @@
 # Учебный проект
 
+Содержит настройки для minikube в папке k8s/ и два микросервиса на go в папке backend/.
+
 ## Зависимости
 
 1. minikube: `brew install minikube`
@@ -23,5 +25,3 @@
 curl localhost/product -d '{"name":"test","price":100}' -H 'X-User-Id: 1'
 curl localhost/products/search
 ```
-
-curl -X PUT "http://localhost:9200/products" -H 'Content-Type: application/json' -d ''
