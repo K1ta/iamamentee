@@ -18,7 +18,7 @@ type KafkaProductEvent struct {
 	Body *Product `json:"product"`
 }
 
-func ConsumeProductEvents(ctx context.Context, wg *sync.WaitGroup, repo *SearchRepository, brokers []string) {
+func ConsumeProductEvents(ctx context.Context, wg *sync.WaitGroup, repo *SearchRepository, store *SearchStore, brokers []string) {
 	defer wg.Done()
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: brokers,
@@ -48,6 +48,10 @@ func ConsumeProductEvents(ctx context.Context, wg *sync.WaitGroup, repo *SearchR
 		// todo switch по типу, но пока одно событие
 		if err := repo.Create(ctx, event.Body); err != nil {
 			log.Println("failed to create product", event.Body.ID, ":", err)
+		}
+
+		if err := store.Index(ctx, event.Body); err != nil {
+			log.Println("failed to index product", event.Body.ID, ":", err)
 		}
 	}
 }

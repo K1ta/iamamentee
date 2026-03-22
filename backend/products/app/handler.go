@@ -16,11 +16,12 @@ type (
 )
 
 type SearchHandler struct {
-	repo *SearchRepository
+	repo  *SearchRepository
+	store *SearchStore
 }
 
-func NewSearchHandler(repo *SearchRepository) *SearchHandler {
-	return &SearchHandler{repo: repo}
+func NewSearchHandler(repo *SearchRepository, store *SearchStore) *SearchHandler {
+	return &SearchHandler{repo: repo, store: store}
 }
 
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +54,18 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("got search request:", req)
 
-	products, err := h.repo.ListByFilter(r.Context(), &req)
+	productIDs, err := h.store.Search(r.Context(), &req)
+	if err != nil {
+		log.Println("Elastic failed:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+	if len(productIDs) == 0 {
+		w.Write([]byte("{}"))
+		return
+	}
+
+	products, err := h.repo.ListByIDs(r.Context(), productIDs)
 	if err != nil {
 		log.Println("ListByFilter failed:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

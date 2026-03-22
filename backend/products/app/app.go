@@ -12,13 +12,14 @@ import (
 )
 
 type Config struct {
-	Listen       string   `env:"APP_LISTEN"`
-	PgHost       string   `env:"APP_PG_HOST"`
-	PgDatabase   string   `env:"APP_PG_DATABASE"`
-	PgUser       string   `env:"APP_PG_USER"`
-	PgPassword   string   `env:"APP_PG_PASSWORD"`
-	KafkaBrokers []string `env:"APP_KAFKA_BROKERS"`
-	Hostname     string   `env:"HOSTNAME"`
+	Listen           string   `env:"APP_LISTEN"`
+	PgHost           string   `env:"APP_PG_HOST"`
+	PgDatabase       string   `env:"APP_PG_DATABASE"`
+	PgUser           string   `env:"APP_PG_USER"`
+	PgPassword       string   `env:"APP_PG_PASSWORD"`
+	KafkaBrokers     []string `env:"APP_KAFKA_BROKERS"`
+	ElasticAddresses []string `env:"APP_ELASTIC_ADDRESSES"`
+	Hostname         string   `env:"HOSTNAME"`
 }
 
 func Run(ctx context.Context) error {
@@ -33,7 +34,11 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("new db: %w", err)
 	}
 	repo := NewSearchRepository(db)
-	handler := NewSearchHandler(repo)
+	store, err := NewSearchStore(conf.ElasticAddresses)
+	if err != nil {
+		return fmt.Errorf("new search store: %w", err)
+	}
+	handler := NewSearchHandler(repo, store)
 	router := NewRouter(handler)
 	server := http.Server{
 		Addr:    conf.Listen,
@@ -47,7 +52,7 @@ func Run(ctx context.Context) error {
 	}()
 
 	wg := new(sync.WaitGroup)
-	go ConsumeProductEvents(ctx, wg, repo, conf.KafkaBrokers)
+	go ConsumeProductEvents(ctx, wg, repo, store, conf.KafkaBrokers)
 
 	log.Println("service is running")
 	select {

@@ -53,5 +53,8 @@ func (r *ProductRepository) List(ctx context.Context, userID int64) ([]Product, 
 		product.UserID = userID
 		res = append(res, product)
 	}
+	if rows.Err() != nil {
+		return nil, err
+	}
 	return res, nil
 }

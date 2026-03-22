@@ -12,8 +12,9 @@
 2. Настроить k8s `make apply` - скорее всего придется два раза повторить, так как файлы применяются в случайном порядке и могут
 быть ошибки с неймспейсами
 3. Создать топик в кафке `make create-topic-product-management.product`
-4. Задеплоить сервисы `make release`
-5. Поднять туннель до миникуба: `minikube tunnel`. Запросы можно будет слать по `127.0.0.1:80`, если адрес не работает, то его можно посмотреть в EXTERNAL-IP в выводе команды `kubectl get svc istio-ingressgateway -n istio-system`
+4. Создать маппинги в elastic: `make create-mappings-products`
+5. Задеплоить сервисы `make release`
+6. Поднять туннель до миникуба: `minikube tunnel`. Запросы можно будет слать по `127.0.0.1:80`, если адрес не работает, то его можно посмотреть в EXTERNAL-IP в выводе команды `kubectl get svc istio-ingressgateway -n istio-system`
 
 На шагах 3-4 могут быть ошибки, если сервисы еще не успели подняться. Достаточно повторить команду чуть позже.
 
@@ -22,3 +23,5 @@
 curl localhost/product -d '{"name":"test","price":100}' -H 'X-User-Id: 1'
 curl localhost/products/search
 ```
+
+curl -X PUT "http://localhost:9200/products" -H 'Content-Type: application/json' -d ''

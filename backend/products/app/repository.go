@@ -4,7 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
+
+	"github.com/lib/pq"
 )
 
 type SearchRepository struct {
@@ -15,28 +16,9 @@ func NewSearchRepository(db *sql.DB) *SearchRepository {
 	return &SearchRepository{db: db}
 }
 
-func (r *SearchRepository) ListByFilter(ctx context.Context, filter *SearchRequest) ([]Product, error) {
-	query := "SELECT id, user_id, name, price FROM products"
-	args := make([]any, 0)
-	clauses := make([]string, 0)
-	if filter.Name != "" {
-		clauses = append(clauses, fmt.Sprintf("name = $%d", len(args)+1))
-		args = append(args, filter.Name)
-	}
-	if filter.PriceFrom > 0 {
-		clauses = append(clauses, fmt.Sprintf("price >= $%d", len(args)+1))
-		args = append(args, filter.PriceFrom)
-	}
-	if filter.PriceTo > 0 {
-		clauses = append(clauses, fmt.Sprintf("price <= $%d", len(args)+1))
-		args = append(args, filter.PriceTo)
-	}
-	if len(clauses) > 0 {
-		query += " WHERE " + strings.Join(clauses, " AND ")
-	}
-
-	// todo pagination
-	rows, err := r.db.QueryContext(ctx, query, args...)
+func (r *SearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]Product, error) {
+	query := "SELECT id, user_id, name, price FROM products WHERE id=ANY($1)"
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(ids)) // todo pagination
 	if err != nil {
 		return nil, fmt.Errorf("query: %w", err)
 	}
@@ -48,6 +30,9 @@ func (r *SearchRepository) ListByFilter(ctx context.Context, filter *SearchReque
 			return nil, fmt.Errorf("scan: %w", err)
 		}
 		res = append(res, product)
+	}
+	if rows.Err() != nil {
+		return nil, err
 	}
 	return res, nil
 }

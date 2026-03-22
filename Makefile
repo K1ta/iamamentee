@@ -6,6 +6,7 @@ LOCAL_PORT=9999
 DB_PORT=5432
 PG_PASSWORD=password
 PG_USER=admin
+ES_PORT=9200
 
 # backend services
 build-%:
@@ -43,6 +44,15 @@ release-%:
 
 release: $(SERVICES:%=release-%)
 
+create-mappings-%:
+	for f in backend/$*/mappings/*.json; do \
+		echo "Creating mapping $$f?ignore=400"; \
+		cat $$f | kubectl exec elasticsearch-0 -n $*-infra -i -- \
+			curl -X PUT -s "http://localhost:9200/$$(basename $$f .json)" \
+			-H 'Content-Type: application/json' \
+			-d @-; \
+	done
+
 # k8s
 apply:
 	kubectl apply -f ./k8s -R --wait
@@ -56,7 +66,7 @@ logs-%:
 	kubectl logs -f -l app=$* -n $*
 
 minikube-up:
-	minikube start --driver=docker --memory=4096 --cpus=4 --disk-size=20gb
+	minikube start --driver=docker --memory=8192 --cpus=4 --disk-size=20gb
 	istioctl install --set profile=demo -y
 
 minikube-down:
