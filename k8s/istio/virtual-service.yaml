@@ -10,17 +10,17 @@ spec:
   http:
     - match:
         - uri:
-            prefix: /product
+            prefix: /products/search
       route:
         - destination:
-            host: product-management
+            host: products.products.svc.cluster.local
             port:
               number: 80
     - match:
         - uri:
-            prefix: /products/search
+            prefix: /product
       route:
         - destination:
-            host: products
+            host: product-management.product-management.svc.cluster.local
             port:
               number: 80

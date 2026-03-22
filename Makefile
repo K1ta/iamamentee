@@ -46,18 +46,18 @@ release: $(SERVICES:%=release-%)
 # k8s
 apply:
 	kubectl apply -f ./k8s -R --wait
+	kubectl label namespace products istio-injection=enabled
+	kubectl label namespace product-management istio-injection=enabled
 
 port-forward-%:
 	kubectl port-forward svc/$* 8080:80 -n $*
 
-port-forward-ingress:
-	kubectl port-forward -n ingress-nginx svc/ingress-nginx-controller 8080:80
-
 logs-%:
-	kubectl logs -f svc/$* -n $*
+	kubectl logs -f -l app=$* -n $*
 
 minikube-up:
 	minikube start --driver=docker --memory=4096 --cpus=4 --disk-size=20gb
+	istioctl install --set profile=demo -y
 
 minikube-down:
 	minikube stop

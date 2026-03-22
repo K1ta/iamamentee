@@ -17,6 +17,7 @@ type Config struct {
 	PgUser       string   `env:"APP_PG_USER"`
 	PgPassword   string   `env:"APP_PG_PASSWORD"`
 	KafkaBrokers []string `env:"APP_KAFKA_BROKERS"`
+	Hostname     string   `env:"HOSTNAME"`
 }
 
 func Run(ctx context.Context) error {
@@ -24,6 +25,7 @@ func Run(ctx context.Context) error {
 	if err := env.Parse(&conf); err != nil {
 		log.Panicln("parse config:", err)
 	}
+	log.SetPrefix(conf.Hostname + " ")
 
 	db, err := NewDB(ctx, conf.PgUser, conf.PgPassword, conf.PgHost, conf.PgDatabase)
 	if err != nil {
