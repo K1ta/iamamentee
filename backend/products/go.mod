@@ -5,13 +5,15 @@ go 1.26.1
 require (
 	github.com/caarlos0/env v3.5.0+incompatible
 	github.com/elastic/go-elasticsearch/v9 v9.3.1
-	github.com/go-chi/chi v1.5.5
+	github.com/ggicci/httpin v0.20.3
+	github.com/go-chi/chi/v5 v5.2.5
 	github.com/lib/pq v1.12.0
 	github.com/segmentio/kafka-go v0.4.50
 )
 
 require (
 	github.com/elastic/elastic-transport-go/v8 v8.8.0 // indirect
+	github.com/ggicci/owl v0.8.2 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect

@@ -33,13 +33,8 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	userID, ok := r.Context().Value(UserIDContextKey{}).(int64)
-	if !ok {
-		log.Println("user id not found in context")
-		http.Error(w, "Invalid user id", http.StatusUnauthorized)
-		return
-	}
-	product, err := NewProduct(userID, req.Name, req.Price)
+
+	product, err := NewProduct(MustGetUserID(r.Context()), req.Name, req.Price)
 	if err != nil {
 		log.Println("failed to create new product:", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -55,13 +50,10 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	respBody, err := json.Marshal(product)
-	if err != nil {
-		log.Println("failed to marshal product:", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+
+	if err := json.NewEncoder(w).Encode(product); err != nil {
+		log.Println("failed to write response:", err)
 	}
-	w.Write(respBody)
 }
 
 func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -71,39 +63,28 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid product id", http.StatusBadRequest)
 		return
 	}
+
 	product, err := h.repo.GetByID(r.Context(), productID)
 	if err != nil {
 		log.Println("failed to get product from db:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	respBody, err := json.Marshal(product)
-	if err != nil {
-		log.Println("failed to marshal product:", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+
+	if err := json.NewEncoder(w).Encode(product); err != nil {
+		log.Println("failed to write response:", err)
 	}
-	w.Write(respBody)
 }
 
 func (h *ProductHandler) List(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(UserIDContextKey{}).(int64)
-	if !ok {
-		log.Println("user id not found in context")
-		http.Error(w, "Invalid user id", http.StatusUnauthorized)
-		return
-	}
-	products, err := h.repo.List(r.Context(), userID)
+	products, err := h.repo.List(r.Context(), MustGetUserID(r.Context()))
 	if err != nil {
 		log.Println("failed to get products from db:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	respBody, err := json.Marshal(products)
-	if err != nil {
-		log.Println("failed to marshal products:", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+
+	if err := json.NewEncoder(w).Encode(products); err != nil {
+		log.Println("failed to write response:", err)
 	}
-	w.Write(respBody)
 }

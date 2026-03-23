@@ -2,16 +2,19 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
-	"strconv"
+
+	"github.com/ggicci/httpin"
+	"github.com/ggicci/httpin/core"
 )
 
 type (
 	SearchRequest struct {
-		Name      string
-		PriceFrom int64
-		PriceTo   int64
+		Name      string `in:"query=name"`
+		PriceFrom int64  `in:"query=from"`
+		PriceTo   int64  `in:"query=to"`
 	}
 )
 
@@ -25,57 +28,36 @@ func NewSearchHandler(repo *SearchRepository, store *SearchStore) *SearchHandler
 }
 
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
-	var req SearchRequest
-	var err error
-
-	var priceFrom int64
-	if from := r.URL.Query().Get("from"); from != "" {
-		priceFrom, err = strconv.ParseInt(from, 10, 64)
-		if err != nil {
-			log.Println("failed to parse from price from url:", err)
-			http.Error(w, "Invalid param 'from'", http.StatusBadRequest)
-			return
+	req, err := httpin.Decode[SearchRequest](r)
+	if err != nil {
+		msg := "Invalid request"
+		if invalidFielError, ok := errors.AsType[*core.InvalidFieldError](err); ok {
+			msg = "Invalid param '" + invalidFielError.Key + "'"
 		}
+		log.Println("failed to parse request:", err)
+		http.Error(w, msg, http.StatusBadRequest)
+		return
 	}
-
-	var priceTo int64
-	if to := r.URL.Query().Get("to"); to != "" {
-		priceTo, err = strconv.ParseInt(to, 10, 64)
-		if err != nil {
-			log.Println("failed to parse to price from url:", err)
-			http.Error(w, "Invalid param 'to'", http.StatusBadRequest)
-			return
-		}
-	}
-
-	req.PriceFrom = priceFrom
-	req.PriceTo = priceTo
-	req.Name = r.URL.Query().Get("name")
-
 	log.Println("got search request:", req)
 
-	productIDs, err := h.store.Search(r.Context(), &req)
+	productIDs, err := h.store.Search(r.Context(), req)
 	if err != nil {
 		log.Println("Elastic failed:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
 	if len(productIDs) == 0 {
-		w.Write([]byte("{}"))
+		w.Write([]byte("[]"))
 		return
 	}
-
 	products, err := h.repo.ListByIDs(r.Context(), productIDs)
 	if err != nil {
 		log.Println("ListByFilter failed:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}
-	respBody, err := json.Marshal(products)
-	if err != nil {
-		log.Println("failed to marshal products:", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
+
+	if err := json.NewEncoder(w).Encode(products); err != nil {
+		log.Println("failed to write response:", err)
 	}
-	w.Write(respBody)
 }
