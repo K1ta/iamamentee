@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: product-management
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: product-management-infra
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: products
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: products-infra
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kafka-common
