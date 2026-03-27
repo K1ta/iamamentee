@@ -38,8 +38,8 @@ func (r *SearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]Produc
 }
 
 func (r *SearchRepository) Create(ctx context.Context, product *Product) error {
-	// TODO on conflict update?
-	query := "INSERT INTO products (id, user_id, name, price) VALUES ($1, $2, $3, $4)"
+	query := "INSERT INTO products (id, user_id, name, price) VALUES ($1, $2, $3, $4) ON CONFLICT (id) " +
+		"DO UPDATE SET name=EXCLUDED.name, price=EXCLUDED.price"
 	_, err := r.db.ExecContext(ctx, query, product.ID, product.UserID, product.Name, product.Price)
 	if err != nil {
 		return fmt.Errorf("exec: %w", err)
