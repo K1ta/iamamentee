@@ -28,7 +28,7 @@ func ConsumeProductEvents(ctx context.Context, wg *sync.WaitGroup, repo *SearchR
 	defer reader.Close()
 
 	for {
-		msg, err := reader.ReadMessage(ctx)
+		msg, err := reader.FetchMessage(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				log.Println("closing consumer", reader.Config().Topic)
@@ -37,6 +37,7 @@ func ConsumeProductEvents(ctx context.Context, wg *sync.WaitGroup, repo *SearchR
 			log.Println("failed to read message from", reader.Config().Topic, ":", err)
 			continue
 		}
+
 		log.Println("message in topic", reader.Config().Topic, "received:", string(msg.Value))
 
 		var event KafkaProductEvent
@@ -52,6 +53,12 @@ func ConsumeProductEvents(ctx context.Context, wg *sync.WaitGroup, repo *SearchR
 
 		if err := store.Index(ctx, event.Body); err != nil {
 			log.Println("failed to index product", event.Body.ID, ":", err)
+		}
+
+		err = reader.CommitMessages(ctx, msg)
+		if err != nil {
+			log.Println("failed to commit message", msg.Partition, msg.Key, msg.Offset, ":", err)
+			continue
 		}
 	}
 }
