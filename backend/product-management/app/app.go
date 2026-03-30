@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/caarlos0/env"
+	"golang.org/x/sync/errgroup"
 )
 
 type Config struct {
@@ -33,34 +33,22 @@ func Run(ctx context.Context) error {
 	}
 	repo := NewProductRepository(db)
 	producer := NewKafkaProductProducer(conf.KafkaBrokers)
-	handler := NewProductHandler(repo, producer)
-	router := NewRouter(handler)
-	server := http.Server{
-		Addr:    conf.Listen,
-		Handler: router,
-	}
-	errCh := make(chan error)
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- fmt.Errorf("run server: %w", err)
+	defer func() {
+		log.Println("closing kafka producer")
+		if err := producer.Close(); err != nil {
+			log.Println("failed close kafka producer:", err)
+		} else {
+			log.Println("kafka producer closed")
 		}
 	}()
+	handler := NewProductHandler(repo, producer)
+	router := NewRouter(handler)
+	server := NewHttpServer(conf.Listen, router, time.Second*5)
 
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return server.Run(egCtx)
+	})
 	log.Println("service is running")
-	select {
-	case <-ctx.Done():
-	case err := <-errCh:
-		log.Println("caught error:", err)
-	}
-	log.Println("stopping service")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("shutdown server: %w", err)
-	}
-	if err := producer.Close(); err != nil {
-		return fmt.Errorf("close kafka: %w", err)
-	}
-	return nil
+	return eg.Wait()
 }

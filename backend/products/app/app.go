@@ -51,8 +51,6 @@ func Run(ctx context.Context) error {
 	eg.Go(func() error {
 		return server.Run(egCtx)
 	})
-
 	log.Println("service is running")
-	eg.Wait()
-	return nil
+	return eg.Wait()
 }
