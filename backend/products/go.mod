@@ -9,6 +9,8 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/lib/pq v1.12.0
 	github.com/segmentio/kafka-go v0.4.50
+	github.com/sethvargo/go-retry v0.3.0
+	golang.org/x/sync v0.20.0
 )
 
 require (
