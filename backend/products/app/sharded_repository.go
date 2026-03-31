@@ -56,7 +56,7 @@ func (r *ShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([
 		eg.Go(func() error {
 			products, err := r.repos[shardID].ListByIDs(egCtx, idsInShard)
 			if err != nil {
-				return fmt.Errorf("ListByIDs failed for shard %s: %w", r.shards[shardID], err)
+				return fmt.Errorf("failed for shard %s: %w", r.shards[shardID], err)
 			}
 			productsCh <- products
 			return nil
@@ -73,4 +73,46 @@ func (r *ShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([
 func (r *ShardedSearchRepository) Create(ctx context.Context, product *Product) error {
 	shardID := GetShardID(r.shards, strconv.FormatInt(product.ID, 10))
 	return r.repos[shardID].Create(ctx, product)
+}
+
+type MigratingShardedSearchRepository struct {
+	repo           *ShardedSearchRepository
+	prevShardsRepo *ShardedSearchRepository
+}
+
+func NewMigratingShardedSearchRepository(repo, prevShardsRepo *ShardedSearchRepository) *MigratingShardedSearchRepository {
+	return &MigratingShardedSearchRepository{repo: repo, prevShardsRepo: prevShardsRepo}
+}
+
+func (r *MigratingShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]Product, error) {
+	products, err := r.repo.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list from current shards: %w", err)
+	}
+
+	if len(products) == len(ids) {
+		// Рассчитываем, что репа работает правильно и возвращает нужные id)
+		return products, nil
+	}
+
+	absentIDs := make([]int64, 0, len(ids)/2)
+	idsSet := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		idsSet[id] = struct{}{}
+	}
+	for _, product := range products {
+		if _, ok := idsSet[product.ID]; !ok {
+			absentIDs = append(absentIDs, product.ID)
+		}
+	}
+
+	productsFromOldShards, err := r.prevShardsRepo.ListByIDs(ctx, absentIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list from prev shards: %w", err)
+	}
+	return append(products, productsFromOldShards...), nil
+}
+
+func (r *MigratingShardedSearchRepository) Create(ctx context.Context, product *Product) error {
+	return r.repo.Create(ctx, product)
 }
