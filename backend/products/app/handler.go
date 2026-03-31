@@ -19,11 +19,11 @@ type (
 )
 
 type SearchHandler struct {
-	repo  *SearchRepository
+	repo  SearchRepository
 	store *SearchStore
 }
 
-func NewSearchHandler(repo *SearchRepository, store *SearchStore) *SearchHandler {
+func NewSearchHandler(repo SearchRepository, store *SearchStore) *SearchHandler {
 	return &SearchHandler{repo: repo, store: store}
 }
 

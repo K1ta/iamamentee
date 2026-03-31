@@ -10,18 +10,21 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type Config struct {
-	Listen           string   `env:"APP_LISTEN"`
-	PgHost           string   `env:"APP_PG_HOST"`
-	PgDatabase       string   `env:"APP_PG_DATABASE"`
-	PgUser           string   `env:"APP_PG_USER"`
-	PgPassword       string   `env:"APP_PG_PASSWORD"`
-	KafkaBrokers     []string `env:"APP_KAFKA_BROKERS"`
-	ElasticAddresses []string `env:"APP_ELASTIC_ADDRESSES"`
-	Hostname         string   `env:"HOSTNAME"`
-}
+type (
+	DBConnectionName string
+	ShardName        string
+	DSN              string
+)
 
-type Worker func(ctx context.Context) error
+type Config struct {
+	Listen           string                         `env:"APP_LISTEN"`
+	KafkaBrokers     []string                       `env:"APP_KAFKA_BROKERS"`
+	ElasticAddresses []string                       `env:"APP_ELASTIC_ADDRESSES"`
+	DBConnections    map[DBConnectionName]DSN       `env:"APP_DB_CONNECTIONS"`
+	Shards           map[ShardName]DBConnectionName `env:"APP_SHARDS"`
+
+	Hostname string `env:"HOSTNAME"` // k8s env
+}
 
 func Run(ctx context.Context) error {
 	var conf Config
@@ -30,17 +33,20 @@ func Run(ctx context.Context) error {
 	}
 	log.SetPrefix(conf.Hostname + " ")
 
-	db, err := NewDB(ctx, conf.PgUser, conf.PgPassword, conf.PgHost, conf.PgDatabase)
+	dbConnections, err := NewDBConnections(conf.DBConnections)
 	if err != nil {
-		return fmt.Errorf("new db: %w", err)
+		return fmt.Errorf("new db connections: %w", err)
 	}
-	repo := NewSearchRepository(db)
+	shardedRepo, err := NewShardedSearchRepository(conf.Shards, dbConnections)
+	if err != nil {
+		return fmt.Errorf("new sharded search repository: %w", err)
+	}
 	store, err := NewSearchStore(conf.ElasticAddresses)
 	if err != nil {
 		return fmt.Errorf("new search store: %w", err)
 	}
-	kafkaConsumer := NewProductEventConsumer(conf.KafkaBrokers, repo, store)
-	handler := NewSearchHandler(repo, store)
+	kafkaConsumer := NewProductEventConsumer(conf.KafkaBrokers, shardedRepo, store)
+	handler := NewSearchHandler(shardedRepo, store)
 	router := NewRouter(handler)
 	server := NewHttpServer(conf.Listen, router, time.Second*5)
 
