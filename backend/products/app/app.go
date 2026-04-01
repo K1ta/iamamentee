@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
-	"sync"
 	"time"
 
 	"github.com/caarlos0/env"
+	"golang.org/x/sync/errgroup"
 )
 
 type Config struct {
@@ -21,6 +20,8 @@ type Config struct {
 	ElasticAddresses []string `env:"APP_ELASTIC_ADDRESSES"`
 	Hostname         string   `env:"HOSTNAME"`
 }
+
+type Worker func(ctx context.Context) error
 
 func Run(ctx context.Context) error {
 	var conf Config
@@ -38,35 +39,18 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("new search store: %w", err)
 	}
+	kafkaConsumer := NewProductEventConsumer(conf.KafkaBrokers, repo, store)
 	handler := NewSearchHandler(repo, store)
 	router := NewRouter(handler)
-	server := http.Server{
-		Addr:    conf.Listen,
-		Handler: router,
-	}
-	errCh := make(chan error)
-	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- fmt.Errorf("run server: %w", err)
-		}
-	}()
+	server := NewHttpServer(conf.Listen, router, time.Second*5)
 
-	wg := new(sync.WaitGroup)
-	go ConsumeProductEvents(ctx, wg, repo, store, conf.KafkaBrokers)
-
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		return kafkaConsumer.Run(egCtx)
+	})
+	eg.Go(func() error {
+		return server.Run(egCtx)
+	})
 	log.Println("service is running")
-	select {
-	case <-ctx.Done():
-	case err := <-errCh:
-		log.Println("caught error:", err)
-	}
-	log.Println("stopping service")
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil && err != http.ErrServerClosed {
-		return fmt.Errorf("shutdown server: %w", err)
-	}
-	wg.Wait()
-	return nil
+	return eg.Wait()
 }
