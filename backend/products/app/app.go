@@ -6,21 +6,21 @@ import (
 	"log"
 	"time"
 
-	"github.com/caarlos0/env"
+	"github.com/caarlos0/env/v11"
 	"golang.org/x/sync/errgroup"
 )
 
 type (
-	DBConnectionName string
-	ShardName        string
-	DSN              string
+	DBConnectionName = string
+	ShardName        = string
+	DSN              = string
 )
 
 type Config struct {
 	Listen           string                         `env:"APP_LISTEN"`
 	KafkaBrokers     []string                       `env:"APP_KAFKA_BROKERS"`
 	ElasticAddresses []string                       `env:"APP_ELASTIC_ADDRESSES"`
-	DBConnections    map[DBConnectionName]DSN       `env:"APP_DB_CONNECTIONS"`
+	DBConnections    map[DBConnectionName]DSN       `env:"APP_DB_CONNECTIONS" envKeyValSeparator:">"`
 	Shards           map[ShardName]DBConnectionName `env:"APP_SHARDS"`
 	PrevShards       map[ShardName]DBConnectionName `env:"APP_PREV_SHARDS"`
 
@@ -30,7 +30,7 @@ type Config struct {
 func Run(ctx context.Context) error {
 	var conf Config
 	if err := env.Parse(&conf); err != nil {
-		log.Panicln("parse config:", err)
+		return fmt.Errorf("parse config: %w", err)
 	}
 	log.SetPrefix(conf.Hostname + " ")
 
@@ -38,14 +38,30 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("new db connections: %w", err)
 	}
+	repoShards := make(map[ShardName]SearchRepository)
+	for shardName, dbConnName := range conf.Shards {
+		db, ok := dbConnections[dbConnName]
+		if !ok {
+			return fmt.Errorf("connection %s for shard %s not found", dbConnName, shardName)
+		}
+		repoShards[shardName] = NewSearchRepository(db)
+	}
 	var repo SearchRepository
-	shardedRepo, err := NewShardedSearchRepository(conf.Shards, dbConnections)
+	shardedRepo, err := NewShardedSearchRepository(repoShards)
 	if err != nil {
 		return fmt.Errorf("new sharded search repository: %w", err)
 	}
 	repo = shardedRepo
 	if len(conf.PrevShards) > 0 {
-		prevShardsRepo, err := NewShardedSearchRepository(conf.PrevShards, dbConnections)
+		prevRepoShards := make(map[ShardName]SearchRepository)
+		for shardName, dbConnName := range conf.PrevShards {
+			db, ok := dbConnections[dbConnName]
+			if !ok {
+				return fmt.Errorf("connection %s for prev shard %s not found", dbConnName, shardName)
+			}
+			prevRepoShards[shardName] = NewSearchRepository(db)
+		}
+		prevShardsRepo, err := NewShardedSearchRepository(prevRepoShards)
 		if err != nil {
 			return fmt.Errorf("new sharded search repository for prev shards: %w", err)
 		}

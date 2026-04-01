@@ -4,7 +4,7 @@ metadata:
   name: postgres
   namespace: products-infra
 spec:
-  type: ClusterIP
+  clusterIP: None
   selector:
     app: postgres
   ports:

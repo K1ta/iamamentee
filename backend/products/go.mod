@@ -3,7 +3,7 @@ module products
 go 1.26.1
 
 require (
-	github.com/caarlos0/env v3.5.0+incompatible
+	github.com/caarlos0/env/v11 v11.4.0
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/elastic/go-elasticsearch/v9 v9.3.1
 	github.com/ggicci/httpin v0.20.3

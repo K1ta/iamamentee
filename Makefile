@@ -66,7 +66,7 @@ logs-%:
 	kubectl logs -f -l app=$* -n $*
 
 minikube-up:
-	minikube start --driver=docker --memory=8192 --cpus=4 --disk-size=20gb
+	minikube start --driver=docker --memory=12288 --cpus=4 --disk-size=20gb
 	minikube addons enable metrics-server
 	istioctl install --set profile=demo -y
 

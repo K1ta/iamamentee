@@ -4,15 +4,18 @@ import (
 	"github.com/cespare/xxhash/v2"
 )
 
-func GetShardID(shards []ShardName, key string) int {
+func GetShard[V any](shards map[ShardName]V, key string) (ShardName, V) {
+	if len(shards) == 0 {
+		panic("empty shards")
+	}
 	maxScore := uint64(0)
-	shardID := -1
-	for i := range shards {
-		score := xxhash.Sum64String(key + ":" + string(shards[i]))
+	var shardName ShardName
+	for name := range shards {
+		score := xxhash.Sum64String(key + ":" + string(name))
 		if score > maxScore {
 			maxScore = score
-			shardID = i
+			shardName = name
 		}
 	}
-	return shardID
+	return shardName, shards[shardName]
 }
