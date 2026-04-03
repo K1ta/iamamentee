@@ -17,11 +17,11 @@ type (
 )
 
 type ProductHandler struct {
-	repo     *ProductRepository
+	repo     ProductRepository
 	producer *KafkaProductProducer
 }
 
-func NewProductHandler(repo *ProductRepository, producer *KafkaProductProducer) *ProductHandler {
+func NewProductHandler(repo ProductRepository, producer *KafkaProductProducer) *ProductHandler {
 	return &ProductHandler{repo: repo, producer: producer}
 }
 
@@ -64,7 +64,7 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	product, err := h.repo.GetByID(r.Context(), productID)
+	product, err := h.repo.GetByID(r.Context(), productID, MustGetUserID(r.Context()))
 	if err != nil {
 		log.Println("failed to get product from db:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

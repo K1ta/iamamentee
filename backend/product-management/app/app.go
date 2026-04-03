@@ -6,18 +6,24 @@ import (
 	"log"
 	"time"
 
-	"github.com/caarlos0/env"
+	"github.com/caarlos0/env/v11"
 	"golang.org/x/sync/errgroup"
 )
 
+type (
+	DBConnectionName = string
+	ShardName        = string
+	DSN              = string
+)
+
 type Config struct {
-	Listen       string   `env:"APP_LISTEN"`
-	PgHost       string   `env:"APP_PG_HOST"`
-	PgDatabase   string   `env:"APP_PG_DATABASE"`
-	PgUser       string   `env:"APP_PG_USER"`
-	PgPassword   string   `env:"APP_PG_PASSWORD"`
-	KafkaBrokers []string `env:"APP_KAFKA_BROKERS"`
-	Hostname     string   `env:"HOSTNAME"`
+	Listen        string                         `env:"APP_LISTEN"`
+	KafkaBrokers  []string                       `env:"APP_KAFKA_BROKERS"`
+	DBConnections map[DBConnectionName]DSN       `env:"APP_DB_CONNECTIONS" envKeyValSeparator:">"`
+	Shards        map[ShardName]DBConnectionName `env:"APP_SHARDS"`
+	PrevShards    map[ShardName]DBConnectionName `env:"APP_PREV_SHARDS"`
+
+	Hostname string `env:"HOSTNAME"`
 }
 
 func Run(ctx context.Context) error {
@@ -27,11 +33,41 @@ func Run(ctx context.Context) error {
 	}
 	log.SetPrefix(conf.Hostname + " ")
 
-	db, err := NewDB(ctx, conf.PgUser, conf.PgPassword, conf.PgHost, conf.PgDatabase)
+	snowflake := NewSnowflake()
+	dbConnections, err := NewDBConnections(conf.DBConnections)
 	if err != nil {
-		return fmt.Errorf("new db: %w", err)
+		return fmt.Errorf("new db connections: %w", err)
 	}
-	repo := NewProductRepository(db)
+	repoShards := make(map[ShardName]ProductRepository)
+	for shardName, dbConnName := range conf.Shards {
+		db, ok := dbConnections[dbConnName]
+		if !ok {
+			return fmt.Errorf("connection %s for shard %s not found", dbConnName, shardName)
+		}
+		repoShards[shardName] = NewProductRepository(db, snowflake)
+	}
+	var repo ProductRepository
+	shardedRepo, err := NewShardedProductRepository(repoShards)
+	if err != nil {
+		return fmt.Errorf("new sharded search repository: %w", err)
+	}
+	repo = shardedRepo
+	if len(conf.PrevShards) > 0 {
+		log.Println("prev shards not empty, use db in shard migration mode")
+		prevRepoShards := make(map[ShardName]ProductRepository)
+		for shardName, dbConnName := range conf.PrevShards {
+			db, ok := dbConnections[dbConnName]
+			if !ok {
+				return fmt.Errorf("connection %s for prev shard %s not found", dbConnName, shardName)
+			}
+			prevRepoShards[shardName] = NewProductRepository(db, snowflake)
+		}
+		prevShardsRepo, err := NewShardedProductRepository(prevRepoShards)
+		if err != nil {
+			return fmt.Errorf("new sharded search repository for prev shards: %w", err)
+		}
+		repo = NewMigratingShardedProductRepository(shardedRepo, prevShardsRepo)
+	}
 	producer := NewKafkaProductProducer(conf.KafkaBrokers)
 	defer func() {
 		log.Println("closing kafka producer")

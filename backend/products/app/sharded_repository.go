@@ -22,16 +22,16 @@ func NewShardedSearchRepository(shards map[string]SearchRepository) (*ShardedSea
 }
 
 func (r *ShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]Product, error) {
-	shardForUDS := make(map[ShardName][]int64, len(r.shards))
+	shardForIDs := make(map[ShardName][]int64, len(r.shards))
 	for _, id := range ids {
 		shardName, _ := GetShard(r.shards, strconv.FormatInt(id, 10))
-		shardForUDS[shardName] = append(shardForUDS[shardName], id)
+		shardForIDs[shardName] = append(shardForIDs[shardName], id)
 	}
 
 	// TODO возможно, лучше сделать eventual consistency и отдавать часть результата с успешных шардов
-	productsCh := make(chan []Product, len(shardForUDS)) // буфер равен числу писателей -> никто не блокируется
+	productsCh := make(chan []Product, len(shardForIDs)) // буфер равен числу писателей -> никто не блокируется
 	eg, egCtx := errgroup.WithContext(ctx)
-	for shardName, idsInShard := range shardForUDS {
+	for shardName, idsInShard := range shardForIDs {
 		eg.Go(func() error {
 			log.Println("list by ids from shard", shardName, ":", idsInShard)
 			products, err := r.shards[shardName].ListByIDs(egCtx, idsInShard)
