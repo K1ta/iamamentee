@@ -3,7 +3,8 @@ module product-management
 go 1.26.1
 
 require (
-	github.com/caarlos0/env v3.5.0+incompatible
+	github.com/caarlos0/env/v11 v11.4.0
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/lib/pq v1.11.2
 	github.com/segmentio/kafka-go v0.4.50

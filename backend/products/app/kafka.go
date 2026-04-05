@@ -25,11 +25,11 @@ type ProductEventConsumer struct {
 	reader        *kafka.Reader
 	fetchBackoff  retry.Backoff
 	commitBackoff retry.Backoff
-	repo          *SearchRepository
+	repo          SearchRepository
 	store         *SearchStore
 }
 
-func NewProductEventConsumer(brokers []string, repo *SearchRepository, store *SearchStore) *ProductEventConsumer {
+func NewProductEventConsumer(brokers []string, repo SearchRepository, store *SearchStore) *ProductEventConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: brokers,
 		GroupID: "products.product",
