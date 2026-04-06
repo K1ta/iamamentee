@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"product-management/app"
-	shardmigrator "product-management/shard_migrator"
+	"product-management/internal/app"
+	"product-management/internal/app/shardmigrator"
 	"syscall"
 )
 
@@ -41,6 +41,10 @@ func main() {
 		return
 	}
 
+	app, err := app.New()
+	if err != nil {
+		log.Fatalln("failed to create new service:", err)
+	}
 	if err := app.Run(ctx); err != nil {
 		log.Println("failed to run service:", err)
 	}

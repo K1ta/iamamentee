@@ -3,10 +3,10 @@ package shardmigrator
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
-	"product-management/app"
+	"product-management/internal/app/models"
+	"product-management/internal/pkg/sharding"
 	"slices"
 	"strconv"
 	"strings"
@@ -23,14 +23,17 @@ const (
 	logPrefixForRestartData = "RESTART_DATA"
 )
 
-var errNoMoreProducts = errors.New("no more products")
+type (
+	dbConnectionName = string
+	dsn              = string
+)
 
 type Config struct {
-	DBConnections       map[app.DBConnectionName]app.DSN       `env:"MIGRATOR_DB_CONNECTIONS" envKeyValSeparator:">"`
-	Shards              map[app.ShardName]app.DBConnectionName `env:"MIGRATOR_SHARDS"`
-	PrevShards          map[app.ShardName]app.DBConnectionName `env:"MIGRATOR_PREV_SHARDS"`
-	PrevShardsStartFrom map[app.ShardName]int64                `env:"MIGRATOR_PREV_SHARDS_START_FROM"`
-	BatchLimit          int64                                  `env:"MIGRATOR_BATCH_LIMIT"`
+	DBConnections       map[dbConnectionName]dsn                `env:"MIGRATOR_DB_CONNECTIONS" envKeyValSeparator:">"`
+	Shards              map[sharding.ShardName]dbConnectionName `env:"MIGRATOR_SHARDS"`
+	PrevShards          map[sharding.ShardName]dbConnectionName `env:"MIGRATOR_PREV_SHARDS"`
+	PrevShardsStartFrom map[sharding.ShardName]int64            `env:"MIGRATOR_PREV_SHARDS_START_FROM"`
+	BatchLimit          int64                                   `env:"MIGRATOR_BATCH_LIMIT"`
 
 	// список старых шардов, которые уже мигрировали - для них воркер не запускается
 	ExcludedPrevShards []string `env:"MIGRATOR_EXCLUDED_PREV_SHARDS"`
@@ -42,12 +45,16 @@ func Run(ctx context.Context, isMigrating bool) error {
 		return fmt.Errorf("parse config: %w", err)
 	}
 
-	dbConnections, err := app.NewDBConnections(conf.DBConnections)
-	if err != nil {
-		return fmt.Errorf("new db connections: %w", err)
+	dbConnections := make(map[dbConnectionName]*sql.DB)
+	for name, dsn := range conf.DBConnections {
+		db, err := sql.Open("postgres", dsn)
+		if err != nil {
+			return fmt.Errorf("init '%s' postgres db: %w", name, err)
+		}
+		dbConnections[name] = db
 	}
 
-	newShards := make(map[app.ShardName]*sql.DB, len(conf.Shards))
+	newShards := make(sharding.Shards[*sql.DB], len(conf.Shards))
 	for shardName, connectionName := range conf.Shards {
 		if db, ok := dbConnections[connectionName]; ok {
 			newShards[shardName] = db
@@ -87,8 +94,8 @@ func Run(ctx context.Context, isMigrating bool) error {
 
 type shardMigrator struct {
 	prevDB        *sql.DB
-	prevShardName app.ShardName
-	newShards     map[app.ShardName]*sql.DB
+	prevShardName sharding.ShardName
+	newShards     sharding.Shards[*sql.DB]
 	batchLimit    int64
 	startFrom     int64
 	isMigrating   bool
@@ -125,9 +132,9 @@ func (m *shardMigrator) loop(ctx context.Context, id int64) (int64, error) {
 	}
 	defer rows.Close()
 
-	products := make([]app.Product, 0, m.batchLimit)
+	products := make([]models.Product, 0, m.batchLimit)
 	for rows.Next() {
-		var product app.Product
+		var product models.Product
 		if err = rows.Scan(&product.ID, &product.UserID, &product.Name, &product.Price); err != nil {
 			return 0, fmt.Errorf("scan: %w", err)
 		}
@@ -149,10 +156,10 @@ func (m *shardMigrator) loop(ctx context.Context, id int64) (int64, error) {
 	return lastProductID, m.deleteProductsFromPrevShard(ctx, products)
 }
 
-func (m *shardMigrator) deleteProductsFromPrevShard(ctx context.Context, products []app.Product) error {
+func (m *shardMigrator) deleteProductsFromPrevShard(ctx context.Context, products []models.Product) error {
 	ids := make([]int64, 0)
 	for _, product := range products {
-		newShardName, _ := app.GetShard(m.newShards, strconv.FormatInt(product.UserID, 10))
+		newShardName, _ := m.newShards.Get(strconv.FormatInt(product.UserID, 10))
 		if newShardName != m.prevShardName { // удаляем продукты, которые уехали в новые шарды
 			ids = append(ids, product.ID)
 		}
@@ -162,11 +169,11 @@ func (m *shardMigrator) deleteProductsFromPrevShard(ctx context.Context, product
 	return err
 }
 
-func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products []app.Product) error {
+func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products []models.Product) error {
 	// split products by new shards
-	productsByNewShards := make(map[app.ShardName][]app.Product)
+	productsByNewShards := make(map[sharding.ShardName][]models.Product)
 	for _, product := range products {
-		newShardName, _ := app.GetShard(m.newShards, strconv.FormatInt(product.UserID, 10))
+		newShardName, _ := m.newShards.Get(strconv.FormatInt(product.UserID, 10))
 		if newShardName != m.prevShardName {
 			productsByNewShards[newShardName] = append(productsByNewShards[newShardName], product)
 		}
@@ -186,7 +193,7 @@ func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products 
 	return eg.Wait()
 }
 
-func insertToNewShard(ctx context.Context, products []app.Product, db *sql.DB) error {
+func insertToNewShard(ctx context.Context, products []models.Product, db *sql.DB) error {
 	args := make([]any, 0, len(products)*fieldsToInsertInProduct)
 	values := make([]string, 0, len(products))
 	for _, product := range products {

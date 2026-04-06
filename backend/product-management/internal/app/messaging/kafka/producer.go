@@ -1,41 +1,42 @@
-package app
+package kafka
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"product-management/internal/app/models"
 	"strconv"
 
 	"github.com/segmentio/kafka-go"
 )
 
 const (
-	KafkaProductEventTypeCreated = "created"
+	ProductEventTypeCreated = "created"
 )
 
-type KafkaProductEvent struct {
-	Type string   `json:"type"`
-	Body *Product `json:"product"`
+type ProductEvent struct {
+	Type string          `json:"type"`
+	Body *models.Product `json:"product"`
 }
 
-type KafkaProductProducer struct {
+type ProductProducer struct {
 	w *kafka.Writer
 }
 
-func NewKafkaProductProducer(brokers []string) *KafkaProductProducer {
+func NewKafkaProductProducer(brokers []string) *ProductProducer {
 	writer := kafka.NewWriter(kafka.WriterConfig{
 		Brokers: brokers,
 		Topic:   "product-management.product",
 	})
-	return &KafkaProductProducer{w: writer}
+	return &ProductProducer{w: writer}
 }
 
-func (p *KafkaProductProducer) ProduceEvent(ctx context.Context, eventType string, product *Product) error {
+func (p *ProductProducer) ProduceEvent(ctx context.Context, eventType string, product *models.Product) error {
 	if product.ID == 0 {
 		return errors.New("empty ID")
 	}
-	event, err := json.Marshal(KafkaProductEvent{
+	event, err := json.Marshal(ProductEvent{
 		Type: eventType,
 		Body: product,
 	})
@@ -48,6 +49,6 @@ func (p *KafkaProductProducer) ProduceEvent(ctx context.Context, eventType strin
 	})
 }
 
-func (p *KafkaProductProducer) Close() error {
+func (p *ProductProducer) Close() error {
 	return p.w.Close()
 }
