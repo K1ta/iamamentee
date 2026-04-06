@@ -11,10 +11,6 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-const (
-	ProductEventTypeCreated = "created"
-)
-
 type ProductEvent struct {
 	Type string          `json:"type"`
 	Body *models.Product `json:"product"`

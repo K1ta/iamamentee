@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"product-management/internal/app/models"
 	"product-management/internal/pkg/snowflake"
 )
@@ -33,13 +34,23 @@ func NewProductService(repo ProductRepository, producer MessageProducer, snowfla
 }
 
 func (s *ProductService) Create(ctx context.Context, userID int64, name string, price int64) (*models.Product, error) {
-	return nil, nil
+	product, err := models.NewProduct(s.snowflake.NextID(), userID, name, price)
+	if err != nil {
+		return nil, fmt.Errorf("new product: %w", err)
+	}
+	if err = s.repo.Create(ctx, product); err != nil {
+		return nil, fmt.Errorf("create product in repo: %w", err)
+	}
+	if err = s.producer.ProduceEvent(ctx, models.ProductEventTypeCreated, product); err != nil {
+		return nil, fmt.Errorf("produce product created event: %w", err)
+	}
+	return product, nil
 }
 
 func (s *ProductService) GetByID(ctx context.Context, userID int64, id int64) (*models.Product, error) {
-	return nil, nil
+	return s.repo.GetByID(ctx, id, userID)
 }
 
 func (s *ProductService) List(ctx context.Context, userID int64) ([]models.Product, error) {
-	return nil, nil
+	return s.repo.List(ctx, userID)
 }
