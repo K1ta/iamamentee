@@ -24,5 +24,5 @@ func NewProduct(id int64, userID int64, name string, price int64) (*Product, err
 	if price <= 0 {
 		return nil, errors.New("invalid price")
 	}
-	return &Product{UserID: userID, Name: name, Price: price}, nil
+	return &Product{ID: id, UserID: userID, Name: name, Price: price}, nil
 }

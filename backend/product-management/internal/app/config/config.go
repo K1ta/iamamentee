@@ -39,7 +39,7 @@ func Parse() (*Config, error) {
 
 	postgresConfigsEnv := make(map[postgresName]map[string]string)
 	for k, v := range env.ToMap(os.Environ()) {
-		if !strings.HasPrefix("APP_POSTGRES_", k) {
+		if !strings.HasPrefix(k, "APP_POSTGRES_") {
 			continue
 		}
 		k = strings.TrimPrefix(k, "APP_POSTGRES_")
@@ -47,13 +47,14 @@ func Parse() (*Config, error) {
 		if len(parts) != 2 {
 			continue
 		}
-
 		m, ok := postgresConfigsEnv[parts[0]]
 		if !ok {
 			m = make(map[string]string)
+			postgresConfigsEnv[parts[0]] = m
 		}
 		m[parts[1]] = v
 	}
+	cfg.PostgresDatabases = make(map[postgresName]PostgresConfig)
 	for name, environment := range postgresConfigsEnv {
 		var postgresConfig PostgresConfig
 		if err := env.ParseWithOptions(&postgresConfig, env.Options{Environment: environment}); err != nil {
