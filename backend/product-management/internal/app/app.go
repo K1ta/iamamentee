@@ -56,7 +56,6 @@ func New() (*App, error) {
 		}
 		shards[shardName] = postgres.NewProductRepository(db)
 	}
-
 	prevShards := make(sharding.Shards[*postgres.ProductRepository])
 	for shardName, dbConnName := range cfg.PrevShards {
 		db, ok := app.dbs[dbConnName]
@@ -65,7 +64,22 @@ func New() (*App, error) {
 		}
 		prevShards[shardName] = postgres.NewProductRepository(db)
 	}
+	repo, err := createShardedProductRepository(shards, prevShards)
+	if err != nil {
+		return nil, err
+	}
 
+	app.kafkaProducer = kafka.NewKafkaProductProducer(cfg.KafkaBrokers)
+
+	service := service.NewProductService(repo, app.kafkaProducer, snowflake.NewSnowflake())
+	handler := http.NewProductHandler(service)
+	router := http.NewRouter(handler)
+	app.httpServer = http.NewHttpServer(cfg.Listen, router, time.Second*5)
+
+	return &app, nil
+}
+
+func createShardedProductRepository(shards, prevShards sharding.Shards[*postgres.ProductRepository]) (service.ProductRepository, error) {
 	shardsRepo, err := postgres.NewShardedProductRepository(shards)
 	if err != nil {
 		return nil, fmt.Errorf("new sharded product repo: %w", err)
@@ -79,15 +93,7 @@ func New() (*App, error) {
 		}
 		repo = postgres.NewMigratingProductRepository(shardsRepo, prevShardsRepo)
 	}
-
-	app.kafkaProducer = kafka.NewKafkaProductProducer(cfg.KafkaBrokers)
-
-	service := service.NewProductService(repo, app.kafkaProducer, snowflake.NewSnowflake())
-	handler := http.NewProductHandler(service)
-	router := http.NewRouter(handler)
-	app.httpServer = http.NewHttpServer(cfg.Listen, router, time.Second*5)
-
-	return &app, nil
+	return repo, nil
 }
 
 func (app *App) Run(ctx context.Context) error {
