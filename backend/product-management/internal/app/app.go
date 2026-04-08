@@ -65,7 +65,7 @@ func New() (*App, error) {
 		return nil, err
 	}
 
-	uowManager, err := postgres.NewUnitOfWorkManager(dbShards)
+	uowManager, err := postgres.NewUnitOfWorkManager(dbShards, cfg.OutboxConfig.MaxAttempts)
 	if err != nil {
 		return nil, fmt.Errorf("new unit of work manager: %w", err)
 	}

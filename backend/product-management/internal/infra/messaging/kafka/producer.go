@@ -14,7 +14,8 @@ type Producer struct {
 
 func NewProducer(brokers []string) *Producer {
 	writer := kafka.NewWriter(kafka.WriterConfig{
-		Brokers: brokers,
+		Brokers:  brokers,
+		Balancer: kafka.Murmur2Balancer{},
 	})
 	return &Producer{w: writer}
 }

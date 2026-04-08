@@ -13,8 +13,6 @@ type ProductService struct {
 	repo       ProductRepository
 	snowflake  *snowflake.Snowflake
 	uowManager *postgres.UnitOfWorkManager
-
-	outboxMaxAttempts int
 }
 
 type (
@@ -29,13 +27,11 @@ func NewProductService(
 	repo ProductRepository,
 	snowflake *snowflake.Snowflake,
 	uowManager *postgres.UnitOfWorkManager,
-	outboxMaxAttempts int,
 ) *ProductService {
 	return &ProductService{
-		repo:              repo,
-		snowflake:         snowflake,
-		uowManager:        uowManager,
-		outboxMaxAttempts: outboxMaxAttempts,
+		repo:       repo,
+		snowflake:  snowflake,
+		uowManager: uowManager,
 	}
 }
 
@@ -56,7 +52,7 @@ func (s *ProductService) Create(ctx context.Context, userID int64, name string, 
 			Key:     strconv.FormatInt(product.ID, 10),
 			Payload: payload.ToJSON(),
 		}
-		if err = uow.CreateOutboxEvent(ctx, event, s.outboxMaxAttempts); err != nil {
+		if err = uow.CreateOutboxEvent(ctx, event); err != nil {
 			return fmt.Errorf("produce product created event: %w", err)
 		}
 		return nil

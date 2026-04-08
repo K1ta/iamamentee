@@ -62,6 +62,7 @@ func NewOutboxApp(ctx context.Context) (*OutboxApp, error) {
 		[]storage.Shards[*sql.DB]{shards, prevShards},
 		app.kafkaProducer,
 		cfg.OutboxConfig.PauseWhenNoWork,
+		cfg.OutboxConfig.MaxAttempts,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("new outbox processor: %w", err)

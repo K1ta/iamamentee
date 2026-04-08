@@ -17,15 +17,17 @@ import (
 )
 
 type Processor struct {
-	shards          storage.Shards[*sql.DB]
-	producer        *kafka.Producer
-	pauseWhenNoWork time.Duration
+	shards            storage.Shards[*sql.DB]
+	producer          *kafka.Producer
+	pauseWhenNoWork   time.Duration
+	outboxMaxAttempts int
 }
 
 func NewProcessor(
 	shardMaps []storage.Shards[*sql.DB],
 	producer *kafka.Producer,
 	pauseWhenNoWork time.Duration,
+	outboxMaxAttempts int,
 ) (*Processor, error) {
 	shards := make(storage.Shards[*sql.DB])
 	for _, shardMap := range shardMaps {
@@ -34,13 +36,24 @@ func NewProcessor(
 	if len(shards) == 0 {
 		return nil, errors.New("no shards")
 	}
-	return &Processor{shards: shards, producer: producer, pauseWhenNoWork: pauseWhenNoWork}, nil
+	return &Processor{
+		shards:            shards,
+		producer:          producer,
+		pauseWhenNoWork:   pauseWhenNoWork,
+		outboxMaxAttempts: outboxMaxAttempts,
+	}, nil
 }
 
 func (p *Processor) Run(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
 	for name, shard := range p.shards {
-		runner := &shardRunner{shardName: name, db: shard, producer: p.producer, pauseWhenNoWork: p.pauseWhenNoWork}
+		runner := &shardRunner{
+			shardName:         name,
+			db:                shard,
+			producer:          p.producer,
+			pauseWhenNoWork:   p.pauseWhenNoWork,
+			outboxMaxAttempts: p.outboxMaxAttempts,
+		}
 		eg.Go(func() error {
 			log.Println("starting runner for shard", name)
 			return runner.Run(egCtx)
@@ -50,10 +63,11 @@ func (p *Processor) Run(ctx context.Context) error {
 }
 
 type shardRunner struct {
-	shardName       storage.ShardName
-	db              *sql.DB
-	producer        *kafka.Producer
-	pauseWhenNoWork time.Duration
+	shardName         storage.ShardName
+	db                *sql.DB
+	producer          *kafka.Producer
+	pauseWhenNoWork   time.Duration
+	outboxMaxAttempts int
 }
 
 func (p *shardRunner) Run(ctx context.Context) error {
@@ -80,7 +94,7 @@ func (p *shardRunner) Run(ctx context.Context) error {
 }
 
 func (p *shardRunner) loop(ctx context.Context, tx *sql.Tx) error {
-	repo := postgres.NewOutboxRepository(tx)
+	repo := postgres.NewOutboxRepository(tx, p.outboxMaxAttempts)
 
 	event, err := repo.SelectOneToSend(ctx)
 	if err != nil {
