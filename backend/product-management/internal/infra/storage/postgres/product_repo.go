@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"log"
 	"product-management/internal/app/models"
-	"product-management/internal/pkg/sharding"
+	"product-management/internal/infra/storage"
 	"strconv"
 )
 
 type ProductRepository struct {
-	db *sql.DB
+	db DBTX
 }
 
-func NewProductRepository(db *sql.DB) *ProductRepository {
+func NewProductRepository(db DBTX) *ProductRepository {
 	return &ProductRepository{db: db}
 }
 
@@ -62,10 +62,10 @@ func (r *ProductRepository) List(ctx context.Context, userID int64) ([]models.Pr
 
 // ShardedProductRepository репозиторий для работы с шардами
 type ShardedProductRepository struct {
-	shards sharding.Shards[*ProductRepository]
+	shards storage.Shards[*ProductRepository]
 }
 
-func NewShardedProductRepository(shards sharding.Shards[*ProductRepository]) (*ShardedProductRepository, error) {
+func NewShardedProductRepository(shards storage.Shards[*ProductRepository]) (*ShardedProductRepository, error) {
 	if len(shards) == 0 {
 		return nil, errors.New("no shards")
 	}

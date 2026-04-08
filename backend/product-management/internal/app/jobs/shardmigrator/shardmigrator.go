@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 	"product-management/internal/app/models"
-	"product-management/internal/pkg/sharding"
+	"product-management/internal/infra/storage"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,11 +29,11 @@ type (
 )
 
 type Config struct {
-	DBConnections       map[dbConnectionName]dsn                `env:"MIGRATOR_DB_CONNECTIONS" envKeyValSeparator:">"`
-	Shards              map[sharding.ShardName]dbConnectionName `env:"MIGRATOR_SHARDS"`
-	PrevShards          map[sharding.ShardName]dbConnectionName `env:"MIGRATOR_PREV_SHARDS"`
-	PrevShardsStartFrom map[sharding.ShardName]int64            `env:"MIGRATOR_PREV_SHARDS_START_FROM"`
-	BatchLimit          int64                                   `env:"MIGRATOR_BATCH_LIMIT"`
+	DBConnections       map[dbConnectionName]dsn               `env:"MIGRATOR_DB_CONNECTIONS" envKeyValSeparator:">"`
+	Shards              map[storage.ShardName]dbConnectionName `env:"MIGRATOR_SHARDS"`
+	PrevShards          map[storage.ShardName]dbConnectionName `env:"MIGRATOR_PREV_SHARDS"`
+	PrevShardsStartFrom map[storage.ShardName]int64            `env:"MIGRATOR_PREV_SHARDS_START_FROM"`
+	BatchLimit          int64                                  `env:"MIGRATOR_BATCH_LIMIT"`
 
 	// список старых шардов, которые уже мигрировали - для них воркер не запускается
 	ExcludedPrevShards []string `env:"MIGRATOR_EXCLUDED_PREV_SHARDS"`
@@ -54,7 +54,7 @@ func Run(ctx context.Context, isMigrating bool) error {
 		dbConnections[name] = db
 	}
 
-	newShards := make(sharding.Shards[*sql.DB], len(conf.Shards))
+	newShards := make(storage.Shards[*sql.DB], len(conf.Shards))
 	for shardName, connectionName := range conf.Shards {
 		if db, ok := dbConnections[connectionName]; ok {
 			newShards[shardName] = db
@@ -94,8 +94,8 @@ func Run(ctx context.Context, isMigrating bool) error {
 
 type shardMigrator struct {
 	prevDB        *sql.DB
-	prevShardName sharding.ShardName
-	newShards     sharding.Shards[*sql.DB]
+	prevShardName storage.ShardName
+	newShards     storage.Shards[*sql.DB]
 	batchLimit    int64
 	startFrom     int64
 	isMigrating   bool
@@ -171,7 +171,7 @@ func (m *shardMigrator) deleteProductsFromPrevShard(ctx context.Context, product
 
 func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products []models.Product) error {
 	// split products by new shards
-	productsByNewShards := make(map[sharding.ShardName][]models.Product)
+	productsByNewShards := make(map[storage.ShardName][]models.Product)
 	for _, product := range products {
 		newShardName, _ := m.newShards.Get(strconv.FormatInt(product.UserID, 10))
 		if newShardName != m.prevShardName {

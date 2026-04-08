@@ -21,6 +21,19 @@ type KafkaProductEvent struct {
 	Body *Product `json:"product"`
 }
 
+func (e *KafkaProductEvent) Validate() error {
+	if e == nil {
+		return errors.New("event is nil")
+	}
+	if e.Type != KafkaProductEventTypeCreated {
+		return fmt.Errorf("invalid event type: %s", e.Type)
+	}
+	if e.Body == nil {
+		return errors.New("body is nil")
+	}
+	return nil
+}
+
 type ProductEventConsumer struct {
 	reader        *kafka.Reader
 	fetchBackoff  retry.Backoff
@@ -66,6 +79,13 @@ func (c *ProductEventConsumer) Run(ctx context.Context) error {
 			if dlqErr := c.writeToDLQ(ctx, msg, err); dlqErr != nil {
 				return fmt.Errorf("write to DLQ failed: %w", err)
 			}
+			continue
+		}
+		if err := event.Validate(); err != nil {
+			if dlqErr := c.writeToDLQ(ctx, msg, err); dlqErr != nil {
+				return fmt.Errorf("write to DLQ failed: %w", err)
+			}
+			continue
 		}
 
 		if err = c.process(ctx, event); err != nil {

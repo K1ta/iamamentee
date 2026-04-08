@@ -1,6 +1,9 @@
 package models
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+)
 
 const ProductEventTypeCreated = "created"
 
@@ -25,4 +28,14 @@ func NewProduct(id int64, userID int64, name string, price int64) (*Product, err
 		return nil, errors.New("invalid price")
 	}
 	return &Product{ID: id, UserID: userID, Name: name, Price: price}, nil
+}
+
+type ProductEvent struct {
+	Type    string   `json:"type"`
+	Product *Product `json:"product"`
+}
+
+func (e *ProductEvent) ToJSON() string {
+	res, _ := json.Marshal(e)
+	return string(res)
 }

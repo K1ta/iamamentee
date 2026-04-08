@@ -4,13 +4,17 @@ import (
 	"context"
 	"fmt"
 	"product-management/internal/app/models"
+	"product-management/internal/infra/storage/postgres"
 	"product-management/internal/pkg/snowflake"
+	"strconv"
 )
 
 type ProductService struct {
-	repo      ProductRepository
-	producer  MessageProducer
-	snowflake *snowflake.Snowflake
+	repo       ProductRepository
+	snowflake  *snowflake.Snowflake
+	uowManager *postgres.UnitOfWorkManager
+
+	outboxMaxAttempts int
 }
 
 type (
@@ -19,17 +23,19 @@ type (
 		GetByID(ctx context.Context, id, userID int64) (*models.Product, error)
 		List(ctx context.Context, userID int64) ([]models.Product, error)
 	}
-
-	MessageProducer interface {
-		ProduceEvent(ctx context.Context, eventType string, product *models.Product) error
-	}
 )
 
-func NewProductService(repo ProductRepository, producer MessageProducer, snowflake *snowflake.Snowflake) *ProductService {
+func NewProductService(
+	repo ProductRepository,
+	snowflake *snowflake.Snowflake,
+	uowManager *postgres.UnitOfWorkManager,
+	outboxMaxAttempts int,
+) *ProductService {
 	return &ProductService{
-		repo:      repo,
-		producer:  producer,
-		snowflake: snowflake,
+		repo:              repo,
+		snowflake:         snowflake,
+		uowManager:        uowManager,
+		outboxMaxAttempts: outboxMaxAttempts,
 	}
 }
 
@@ -38,12 +44,24 @@ func (s *ProductService) Create(ctx context.Context, userID int64, name string, 
 	if err != nil {
 		return nil, fmt.Errorf("new product: %w", err)
 	}
-	if err = s.repo.Create(ctx, product); err != nil {
-		return nil, fmt.Errorf("create product in repo: %w", err)
-	}
-	if err = s.producer.ProduceEvent(ctx, models.ProductEventTypeCreated, product); err != nil {
-		return nil, fmt.Errorf("produce product created event: %w", err)
-	}
+
+	s.uowManager.RunForUser(ctx, userID, func(uow *postgres.UnitOfWork) error {
+		if err = uow.CreateProduct(ctx, product); err != nil {
+			return fmt.Errorf("create product in repo: %w", err)
+		}
+		payload := models.ProductEvent{Type: models.ProductEventTypeCreated, Product: product}
+		event := &models.OutboxEvent{
+			ID:      s.snowflake.NextID(),
+			Type:    models.ProductCreated,
+			Key:     strconv.FormatInt(product.ID, 10),
+			Payload: payload.ToJSON(),
+		}
+		if err = uow.CreateOutboxEvent(ctx, event, s.outboxMaxAttempts); err != nil {
+			return fmt.Errorf("produce product created event: %w", err)
+		}
+		return nil
+	})
+
 	return product, nil
 }
 

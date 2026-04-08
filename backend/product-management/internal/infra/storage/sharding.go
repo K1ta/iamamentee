@@ -1,4 +1,4 @@
-package sharding
+package storage
 
 import "github.com/cespare/xxhash/v2"
 

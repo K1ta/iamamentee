@@ -6,13 +6,14 @@ import (
 	"os"
 	"os/signal"
 	"product-management/internal/app"
-	"product-management/internal/app/shardmigrator"
+	"product-management/internal/app/jobs/shardmigrator"
 	"syscall"
 )
 
 const (
 	cmdMigrateShards = "migrate-shards"
 	cmdCleanupShards = "cleanup-shards"
+	cmdOutbox        = "outbox"
 )
 
 func main() {
@@ -37,13 +38,22 @@ func main() {
 			if err := shardmigrator.Run(ctx, false); err != nil {
 				log.Println("failed to run migrator:", err)
 			}
+		case cmdOutbox:
+			log.Println("starting outbox processor")
+			app, err := app.NewOutboxApp(ctx)
+			if err != nil {
+				log.Fatalln("failed to create new outbox app:", err)
+			}
+			if err := app.Run(ctx); err != nil {
+				log.Println("failed to run outbox app:", err)
+			}
 		}
 		return
 	}
 
 	app, err := app.New()
 	if err != nil {
-		log.Fatalln("failed to create new service:", err)
+		log.Fatalln("failed to create new app:", err)
 	}
 	if err := app.Run(ctx); err != nil {
 		log.Println("failed to run service:", err)

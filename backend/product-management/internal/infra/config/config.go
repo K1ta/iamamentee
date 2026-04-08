@@ -3,8 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
-	"product-management/internal/pkg/sharding"
+	"product-management/internal/infra/storage"
 	"strings"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -12,11 +13,13 @@ import (
 type postgresName = string
 
 type Config struct {
-	Listen       string                              `env:"APP_LISTEN"`
-	KafkaBrokers []string                            `env:"APP_KAFKA_BROKERS"`
-	LogToken     string                              `env:"APP_LOG_TOKEN"`
-	Shards       map[sharding.ShardName]postgresName `env:"APP_SHARDS"`
-	PrevShards   map[sharding.ShardName]postgresName `env:"APP_PREV_SHARDS"`
+	Listen       string                             `env:"APP_LISTEN"`
+	KafkaBrokers []string                           `env:"APP_KAFKA_BROKERS"`
+	LogToken     string                             `env:"APP_LOG_TOKEN"`
+	Shards       map[storage.ShardName]postgresName `env:"APP_SHARDS"`
+	PrevShards   map[storage.ShardName]postgresName `env:"APP_PREV_SHARDS"`
+
+	OutboxConfig OutboxConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
@@ -29,6 +32,11 @@ type PostgresConfig struct {
 	User     string `env:"USER"`
 	Password string `env:"PASSWORD"`
 	SSLMode  string `env:"SSL_MODE"`
+}
+
+type OutboxConfig struct {
+	PauseWhenNoWork time.Duration `env:"APP_OUTBOX_PAUSE_WHEN_NO_WORK"`
+	MaxAttempts     int           `env:"APP_OUTBOX_MAX_ATTEMPTS"`
 }
 
 func Parse() (*Config, error) {
