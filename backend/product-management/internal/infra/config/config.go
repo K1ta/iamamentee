@@ -10,20 +10,21 @@ import (
 	"github.com/caarlos0/env/v11"
 )
 
-type postgresName = string
+type PostgresName = string
 
 type Config struct {
 	Listen       string                             `env:"APP_LISTEN"`
 	KafkaBrokers []string                           `env:"APP_KAFKA_BROKERS"`
 	LogToken     string                             `env:"APP_LOG_TOKEN"`
-	Shards       map[storage.ShardName]postgresName `env:"APP_SHARDS"`
-	PrevShards   map[storage.ShardName]postgresName `env:"APP_PREV_SHARDS"`
+	Shards       map[storage.ShardName]PostgresName `env:"APP_SHARDS"`
+	PrevShards   map[storage.ShardName]PostgresName `env:"APP_PREV_SHARDS"`
 
-	OutboxConfig OutboxConfig
+	OutboxConfig         OutboxConfig
+	ShardsMigratorConfig ShardsMigratorConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
-	PostgresDatabases map[postgresName]PostgresConfig
+	PostgresDatabases map[PostgresName]PostgresConfig
 }
 
 type PostgresConfig struct {
@@ -39,13 +40,19 @@ type OutboxConfig struct {
 	MaxAttempts     int           `env:"APP_OUTBOX_MAX_ATTEMPTS"`
 }
 
+type ShardsMigratorConfig struct {
+	PrevShardsStartFrom map[storage.ShardName]int64 `env:"APP_SHARDSMIGRATOR_PREV_SHARDS_START_FROM"`
+	ExcludedPrevShards  []storage.ShardName         `env:"APP_SHARDSMIGRATOR_EXCLUDED_PREV_SHARDS"`
+	BatchLimit          int64                       `env:"APP_SHARDSMIGRATOR_BATCH_LIMIT"`
+}
+
 func Parse() (*Config, error) {
 	var cfg Config
 	if err := env.Parse(&cfg); err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
-	postgresConfigsEnv := make(map[postgresName]map[string]string)
+	postgresConfigsEnv := make(map[PostgresName]map[string]string)
 	for k, v := range env.ToMap(os.Environ()) {
 		if !strings.HasPrefix(k, "APP_POSTGRES_") {
 			continue
@@ -62,7 +69,7 @@ func Parse() (*Config, error) {
 		}
 		m[parts[1]] = v
 	}
-	cfg.PostgresDatabases = make(map[postgresName]PostgresConfig)
+	cfg.PostgresDatabases = make(map[PostgresName]PostgresConfig)
 	for name, environment := range postgresConfigsEnv {
 		var postgresConfig PostgresConfig
 		if err := env.ParseWithOptions(&postgresConfig, env.Options{Environment: environment}); err != nil {

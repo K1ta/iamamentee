@@ -12,7 +12,7 @@ type OutboxRepository struct {
 }
 
 func NewOutboxRepository(tx *sql.Tx, maxAttempts int) *OutboxRepository {
-	return &OutboxRepository{tx: tx}
+	return &OutboxRepository{tx: tx, maxAttempts: maxAttempts}
 }
 
 func (r *OutboxRepository) Create(ctx context.Context, event *models.OutboxEvent) error {

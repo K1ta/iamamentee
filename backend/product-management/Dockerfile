@@ -7,4 +7,4 @@ RUN go mod download
 COPY . .
 RUN go build -o product-management .
 
-CMD ["./product-management"]
+CMD ["./product-management", "server"]

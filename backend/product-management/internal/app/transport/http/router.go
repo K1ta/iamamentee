@@ -12,15 +12,15 @@ import (
 
 type UserIDContextKey struct{}
 
-func NewRouter(handler *ProductHandler) chi.Router {
+func NewRouter(productHandler *ProductHandler) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestLogger(&middleware.DefaultLogFormatter{Logger: log.Default()}))
 	r.Route("/product", func(r chi.Router) {
 		r.Use(FakeAuthMiddleware)
-		r.Post("/", handler.Create)
-		r.Get("/", handler.List)
-		r.Get("/{id}", handler.Get)
+		r.Post("/", productHandler.Create)
+		r.Get("/", productHandler.List)
+		r.Get("/{id}", productHandler.Get)
 	})
 	return r
 }

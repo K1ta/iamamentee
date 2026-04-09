@@ -83,6 +83,8 @@ func (p *shardRunner) Run(ctx context.Context) error {
 		timeToWait := p.pauseWhenNoWork
 		if hadWork {
 			timeToWait = 0
+		} else {
+			log.Println("selected no rows, sleeping..")
 		}
 
 		select {

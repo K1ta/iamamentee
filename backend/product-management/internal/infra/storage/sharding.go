@@ -2,7 +2,7 @@ package storage
 
 import "github.com/cespare/xxhash/v2"
 
-type ShardName = string
+type ShardName string
 
 type Shards[T any] map[ShardName]T
 

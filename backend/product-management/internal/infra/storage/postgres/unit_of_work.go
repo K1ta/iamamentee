@@ -41,3 +41,11 @@ func (uow *UnitOfWork) CreateProduct(ctx context.Context, product *models.Produc
 func (uow *UnitOfWork) CreateOutboxEvent(ctx context.Context, event *models.OutboxEvent) error {
 	return NewOutboxRepository(uow.tx, uow.outboxMaxAttempts).Create(ctx, event)
 }
+
+func (uow *UnitOfWork) ProductRepository() *ProductRepository {
+	return nil
+}
+
+func (uow *UnitOfWork) OutboxRepository() *OutboxRepository {
+	return nil
+}
