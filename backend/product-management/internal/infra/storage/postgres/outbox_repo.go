@@ -7,16 +7,17 @@ import (
 )
 
 type OutboxRepository struct {
-	tx *sql.Tx
+	tx          *sql.Tx
+	maxAttempts int
 }
 
-func NewOutboxRepository(tx *sql.Tx) *OutboxRepository {
+func NewOutboxRepository(tx *sql.Tx, maxAttempts int) *OutboxRepository {
 	return &OutboxRepository{tx: tx}
 }
 
-func (r *OutboxRepository) Create(ctx context.Context, event *models.OutboxEvent, maxAttempts int) error {
+func (r *OutboxRepository) Create(ctx context.Context, event *models.OutboxEvent) error {
 	query := "INSERT INTO outbox(id, type, key, payload, max_attempts) VALUES ($1, $2, $3, $4, $5)"
-	_, err := r.tx.ExecContext(ctx, query, event.ID, event.Type, event.Key, event.Payload, maxAttempts)
+	_, err := r.tx.ExecContext(ctx, query, event.ID, event.Type, event.Key, event.Payload, r.maxAttempts)
 	return err
 }
 
