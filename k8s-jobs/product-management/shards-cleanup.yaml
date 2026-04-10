@@ -7,12 +7,12 @@ spec:
   backoffLimit: 3
   template:
     spec:
+      restartPolicy: Never
       containers:
         - name: products
           image: docker.io/library/product-management:latest
           imagePullPolicy: Never
           command: ["./product-management", "shards", "cleanup"]
-          restartPolicy: Never
           env:
             ### first shard
             - name: APP_POSTGRES_PG0_HOST
@@ -29,7 +29,7 @@ spec:
             - name: APP_POSTGRES_PG1_HOST
               value: "postgres-1.postgres.product-management-infra:5432"
             - name: APP_POSTGRES_PG1_DATABASE
-              vakue: "product-management"
+              value: "product-management"
             - name: APP_POSTGRES_PG1_USER
               value: "admin"
             - name: APP_POSTGRES_PG1_PASSWORD
@@ -38,9 +38,9 @@ spec:
               value: "disable"
               ###
             - name: APP_SHARDS
-              value: "products-0:postgres-0,products-1:postgres-1"
+              value: "products-0:PG0,products-1:PG1"
             - name: APP_PREV_SHARDS
-              value: "products-0:postgres-0"
+              value: "products-0:PG0"
             - name: APP_SHARDSMIGRATOR_PREV_SHARDS_START_FROM
               value: ""
             - name: APP_SHARDSMIGRATOR_EXCLUDED_PREV_SHARDS
