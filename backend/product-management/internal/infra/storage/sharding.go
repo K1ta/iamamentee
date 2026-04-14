@@ -1,10 +1,12 @@
-package app
+package storage
 
-import (
-	"github.com/cespare/xxhash/v2"
-)
+import "github.com/cespare/xxhash/v2"
 
-func GetShard[V any](shards map[ShardName]V, key string) (ShardName, V) {
+type ShardName string
+
+type Shards[T any] map[ShardName]T
+
+func (shards Shards[T]) Get(key string) (ShardName, T) {
 	if len(shards) == 0 {
 		panic("empty shards")
 	}

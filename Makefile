@@ -23,18 +23,28 @@ deploy-%:
 	kubectl rollout restart deployment $* -n $*
 
 migrate-up-%:
-	kubectl port-forward svc/postgres -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
-	echo PID=$$PF_PID; \
-	sleep 1; \
-	goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" up -dir backend/$*/migrations; \
-	kill $$PF_PID
+	pods="$(shell kubectl get pods -n $*-infra -l app=postgres -o jsonpath='{.items[*].metadata.name}')"; \
+	echo $$pods; \
+	for pod in $$pods; do \
+		echo "Migrating up $$pod"; \
+		kubectl port-forward $$pod -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+		echo PID=$$PF_PID; \
+		sleep 1; \
+		goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" up -dir backend/$*/migrations; \
+		kill $$PF_PID; \
+	done
 
 migrate-down-%:
-	kubectl port-forward svc/postgres -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
-	echo PID=$$PF_PID; \
-	sleep 1; \
-	goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" down -dir backend/$*/migrations; \
-	kill $$PF_PID
+	pods="$(shell kubectl get pods -n $*-infra -l app=postgres -o jsonpath='{.items[*].metadata.name}')"; \
+	echo $$pods; \
+	for pod in $$pods; do \
+		echo "Migrating down $$pod"; \
+		kubectl port-forward $$pod -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+		echo PID=$$PF_PID; \
+		sleep 1; \
+		goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" down -dir backend/$*/migrations; \
+		kill $$PF_PID; \
+	done
 
 .PHONY: release release-%
 release-%:

@@ -7,20 +7,43 @@ spec:
   backoffLimit: 3
   template:
     spec:
+      restartPolicy: Never
       containers:
         - name: products
           image: docker.io/library/product-management:latest
           imagePullPolicy: Never
-          command: ["./product-management", "migrate-shards"]
+          command: ["./product-management", "shards", "migrate"]
           env:
-            - name: MIGRATOR_DB_CONNECTIONS
-              value: "postgres-0>postgresql://admin:password@postgres-0.postgres.product-management-infra:5432/product-management?sslmode=disable,postgres-1>postgresql://admin:password@postgres-1.postgres.product-management-infra:5432/product-management?sslmode=disable"
-            - name: MIGRATOR_SHARDS
-              value: "products-0:postgres-0,products-1:postgres-1"
-            - name: MIGRATOR_PREV_SHARDS
-              value: "products-0:postgres-0"
-            - name: MIGRATOR_PREV_SHARDS_START_FROM
+            ### first shard
+            - name: APP_POSTGRES_PG0_HOST
+              value: "postgres-0.postgres.product-management-infra:5432"
+            - name: APP_POSTGRES_PG0_DATABASE
+              value: "product-management"
+            - name: APP_POSTGRES_PG0_USER
+              value: "admin"
+            - name: APP_POSTGRES_PG0_PASSWORD
+              value: "password"
+            - name: APP_POSTGRES_PG0_SSL_MODE
+              value: "disable"
+              ### second shard
+            - name: APP_POSTGRES_PG1_HOST
+              value: "postgres-1.postgres.product-management-infra:5432"
+            - name: APP_POSTGRES_PG1_DATABASE
+              value: "product-management"
+            - name: APP_POSTGRES_PG1_USER
+              value: "admin"
+            - name: APP_POSTGRES_PG1_PASSWORD
+              value: "password"
+            - name: APP_POSTGRES_PG1_SSL_MODE
+              value: "disable"
+              ###
+            - name: APP_SHARDS
+              value: "products-0:PG0,products-1:PG1"
+            - name: APP_PREV_SHARDS
+              value: "products-0:PG0"
+            - name: APP_SHARDSMIGRATOR_PREV_SHARDS_START_FROM
               value: ""
-            - name: MIGRATOR_BATCH_LIMIT
+            - name: APP_SHARDSMIGRATOR_EXCLUDED_PREV_SHARDS
+              value: ""
+            - name: APP_SHARDSMIGRATOR_BATCH_LIMIT
               value: "1"
-      restartPolicy: Never

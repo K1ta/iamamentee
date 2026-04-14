@@ -5,14 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"product-management/app"
-	shardmigrator "product-management/shard_migrator"
+	"product-management/cmd"
 	"syscall"
-)
-
-const (
-	cmdMigrateShards = "migrate-shards"
-	cmdCleanupShards = "cleanup-shards"
 )
 
 func main() {
@@ -24,24 +18,7 @@ func main() {
 		cancel()
 	}()
 
-	// Особые режимы запуска - миграция шардов и очистка старых шардов
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case cmdMigrateShards:
-			log.Println("starting migrator in migration mode")
-			if err := shardmigrator.Run(ctx, true); err != nil {
-				log.Println("failed to run migrator:", err)
-			}
-		case cmdCleanupShards:
-			log.Println("starting migrator in cleanup mode")
-			if err := shardmigrator.Run(ctx, false); err != nil {
-				log.Println("failed to run migrator:", err)
-			}
-		}
-		return
-	}
-
-	if err := app.Run(ctx); err != nil {
-		log.Println("failed to run service:", err)
+	if err := cmd.Run(ctx); err != nil {
+		log.Println("run failed:", err)
 	}
 }

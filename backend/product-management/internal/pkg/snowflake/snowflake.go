@@ -1,4 +1,4 @@
-package app
+package snowflake
 
 import (
 	"math/rand"

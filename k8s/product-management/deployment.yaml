@@ -29,3 +29,35 @@ spec:
             limits:
               memory: "256Mi"
               cpu: "500m"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outbox
+  namespace: product-management
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: outbox
+  template:
+    metadata:
+      labels:
+        app: outbox
+    spec:
+      containers:
+        - name: product-management
+          image: docker.io/library/product-management:latest
+          command: ["./product-management", "outbox"]
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: product-management-config
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
