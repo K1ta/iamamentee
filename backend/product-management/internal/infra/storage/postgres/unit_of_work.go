@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"product-management/internal/app/domain"
+	"product-management/internal/domain"
 	"product-management/internal/pkg/sharding"
 	"strconv"
 )

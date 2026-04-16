@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"product-management/internal/app/domain"
+	"product-management/internal/domain"
 	"product-management/internal/pkg/sharding"
 	"strconv"
 )

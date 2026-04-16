@@ -3,7 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"product-management/internal/app/domain"
+	"product-management/internal/domain"
 	"strings"
 
 	"github.com/lib/pq"

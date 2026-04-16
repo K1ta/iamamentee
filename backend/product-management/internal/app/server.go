@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
-	"product-management/internal/app/transport/httpapi"
+	"product-management/internal/transport/httpapi"
 	"sync"
 	"time"
 

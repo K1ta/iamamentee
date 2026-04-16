@@ -3,7 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
-	"product-management/internal/app/domain"
+	"product-management/internal/domain"
 
 	"github.com/segmentio/kafka-go"
 )

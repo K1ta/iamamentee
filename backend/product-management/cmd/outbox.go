@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"log"
 	"product-management/internal/app"
-	"product-management/internal/app/jobs/outbox"
 	"product-management/internal/infra/config"
 	"product-management/internal/infra/messaging/kafka"
 	"product-management/internal/infra/storage/postgres"
 	"product-management/internal/pkg/sharding"
+	"product-management/internal/workers/outbox"
 
 	"github.com/spf13/cobra"
 )

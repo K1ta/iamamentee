@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"product-management/internal/app/domain"
+	"product-management/internal/domain"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"

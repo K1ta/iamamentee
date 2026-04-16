@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"log"
-	"product-management/internal/app/jobs/outbox"
 	"product-management/internal/infra/messaging/kafka"
+	"product-management/internal/workers/outbox"
 	"sync"
 	"time"
 )

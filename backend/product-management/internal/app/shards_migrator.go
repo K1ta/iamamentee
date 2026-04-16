@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
-	"product-management/internal/app/jobs/shardsmigrator"
+	"product-management/internal/workers/shardsmigrator"
 	"sync"
 	"time"
 )

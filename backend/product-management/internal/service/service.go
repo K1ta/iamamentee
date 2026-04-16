@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"product-management/internal/app/domain"
+	"product-management/internal/domain"
 	"product-management/internal/pkg/snowflake"
 	"strconv"
 )

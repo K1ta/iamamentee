@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"log"
 	"product-management/internal/app"
-	"product-management/internal/app/jobs/shardsmigrator"
 	"product-management/internal/infra/config"
 	"product-management/internal/infra/storage/postgres"
 	"product-management/internal/pkg/sharding"
+	"product-management/internal/workers/shardsmigrator"
 
 	"github.com/spf13/cobra"
 )
