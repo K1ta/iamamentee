@@ -2,57 +2,51 @@ package outbox
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log"
-	"maps"
+	"product-management/internal/app/domain"
 	"product-management/internal/infra/messaging/kafka"
-	"product-management/internal/infra/storage"
-	"product-management/internal/infra/storage/postgres"
-	"product-management/internal/pkg/tx"
+	"product-management/internal/pkg/sharding"
 	"time"
 
 	"golang.org/x/sync/errgroup"
 )
 
+type Repository interface {
+	SelectBatchToSend(ctx context.Context) ([]domain.OutboxEvent, error)
+	MarkBatchAsSent(ctx context.Context, ids []int64) error
+}
+
 type Processor struct {
-	shards            storage.Shards[*sql.DB]
-	producer          *kafka.Producer
-	pauseWhenNoWork   time.Duration
-	outboxMaxAttempts int
+	shards          map[sharding.ShardName]Repository
+	producer        *kafka.Producer
+	pauseWhenNoWork time.Duration
 }
 
 func NewProcessor(
-	shardMaps []storage.Shards[*sql.DB],
+	shards map[sharding.ShardName]Repository,
 	producer *kafka.Producer,
 	pauseWhenNoWork time.Duration,
-	outboxMaxAttempts int,
 ) (*Processor, error) {
-	shards := make(storage.Shards[*sql.DB])
-	for _, shardMap := range shardMaps {
-		maps.Copy(shards, shardMap)
-	}
 	if len(shards) == 0 {
 		return nil, errors.New("no shards")
 	}
 	return &Processor{
-		shards:            shards,
-		producer:          producer,
-		pauseWhenNoWork:   pauseWhenNoWork,
-		outboxMaxAttempts: outboxMaxAttempts,
+		shards:          shards,
+		producer:        producer,
+		pauseWhenNoWork: pauseWhenNoWork,
 	}, nil
 }
 
 func (p *Processor) Run(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
-	for name, shard := range p.shards {
+	for name, repo := range p.shards {
 		runner := &shardRunner{
-			shardName:         name,
-			db:                shard,
-			producer:          p.producer,
-			pauseWhenNoWork:   p.pauseWhenNoWork,
-			outboxMaxAttempts: p.outboxMaxAttempts,
+			shardName:       name,
+			repo:            repo,
+			producer:        p.producer,
+			pauseWhenNoWork: p.pauseWhenNoWork,
 		}
 		eg.Go(func() error {
 			log.Println("starting runner for shard", name)
@@ -63,59 +57,47 @@ func (p *Processor) Run(ctx context.Context) error {
 }
 
 type shardRunner struct {
-	shardName         storage.ShardName
-	db                *sql.DB
-	producer          *kafka.Producer
-	pauseWhenNoWork   time.Duration
-	outboxMaxAttempts int
+	shardName       sharding.ShardName
+	repo            Repository
+	producer        *kafka.Producer
+	pauseWhenNoWork time.Duration
 }
 
 func (p *shardRunner) Run(ctx context.Context) error {
 	for {
-		hadWork := true
-		if err := tx.Run(ctx, p.db, p.loop); err != nil {
-			if !errors.Is(err, sql.ErrNoRows) {
-				return err
+		hadWork, err := p.loop(ctx)
+		if err != nil {
+			return err
+		}
+
+		if !hadWork {
+			select {
+			case <-time.After(p.pauseWhenNoWork):
+			case <-ctx.Done():
+				return nil
 			}
-			hadWork = false
-		}
-
-		timeToWait := p.pauseWhenNoWork
-		if hadWork {
-			timeToWait = 0
-		} else {
-			log.Println("selected no rows, sleeping..")
-		}
-
-		select {
-		case <-time.After(timeToWait):
-		case <-ctx.Done():
-			return nil
 		}
 	}
 }
 
-func (p *shardRunner) loop(ctx context.Context, tx *sql.Tx) error {
-	repo := postgres.NewOutboxRepository(tx, p.outboxMaxAttempts)
-
-	event, err := repo.SelectOneToSend(ctx)
+func (p *shardRunner) loop(ctx context.Context) (bool, error) {
+	events, err := p.repo.SelectBatchToSend(ctx)
 	if err != nil {
-		return fmt.Errorf("select event from shard %s: %w", p.shardName, err)
+		return false, fmt.Errorf("select event from shard %s: %w", p.shardName, err)
 	}
-
-	err = p.producer.ProduceEvent(ctx, event)
-	if err != nil {
-		log.Printf("failed to publish event %s/%d: %v", p.shardName, event.ID, err)
-		err = repo.IncreaseAttemts(ctx, event.ID)
-		if err != nil {
-			return fmt.Errorf("failed to increase attemts for event %s/%d: %w", p.shardName, event.ID, err)
-		}
-	} else {
-		err = repo.MarkAsSent(ctx, event.ID)
-		if err != nil {
-			return fmt.Errorf("failed to mark event %s/%d as sent: %w", p.shardName, event.ID, err)
-		}
-		log.Printf("event %s/%d sent", p.shardName, event.ID)
+	if len(events) == 0 {
+		return false, nil
 	}
-	return nil
+	if err = p.producer.ProduceEventsBatch(ctx, events); err != nil {
+		return false, fmt.Errorf("produce events from %s: %w", p.shardName, err)
+	}
+	ids := make([]int64, 0, len(events))
+	for _, event := range events {
+		ids = append(ids, event.ID)
+	}
+	if err = p.repo.MarkBatchAsSent(ctx, ids); err != nil {
+		return false, fmt.Errorf("mark as sent on %s: %w", p.shardName, err)
+	}
+	log.Printf("%d events sent from %s", len(events), p.shardName)
+	return true, nil
 }

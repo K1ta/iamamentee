@@ -2,128 +2,127 @@ package shardsmigrator
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"log"
-	"product-management/internal/app/models"
-	"product-management/internal/infra/storage"
+	"product-management/internal/app/domain"
+	"product-management/internal/pkg/sharding"
 	"slices"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/lib/pq"
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	fieldsToInsertInProduct = 4 // вместе с id
-	logPrefixForRestartData = "RESTART_DATA"
-)
+type Repository interface {
+	ListByIDLimited(ctx context.Context, fromID int64, limit int) ([]domain.Product, error)
+	CreateBatch(ctx context.Context, products []domain.Product) error
+	DeleteBatch(ctx context.Context, ids []int64) error
+}
 
 type Migrator struct {
-	newShards           storage.Shards[*sql.DB]
-	prevShards          storage.Shards[*sql.DB]
-	prevShardsStartFrom map[storage.ShardName]int64
-	excludedPrevShards  []storage.ShardName
-	batchLimit          int64
+	prevShards          map[sharding.ShardName]Repository
+	newShardsPool       *sharding.Pool[Repository]
+	prevShardsStartFrom map[sharding.ShardName]int64
+	excludedPrevShards  []sharding.ShardName
+	batchLimit          int
 	isMigrating         bool
 }
 
 func New(
-	newShards, prevShards storage.Shards[*sql.DB],
-	prevShardsStartFrom map[storage.ShardName]int64,
-	excludedPrevShards []storage.ShardName,
-	batchLimit int64,
+	prevShards map[sharding.ShardName]Repository,
+	newShardsPool *sharding.Pool[Repository],
+	prevShardsStartFrom map[sharding.ShardName]int64,
+	excludedPrevShards []sharding.ShardName,
+	batchLimit int,
 	isMigrating bool,
-) (*Migrator, error) {
-	if len(newShards) == 0 {
-		return nil, errors.New("empty new shards")
-	}
-	if len(prevShards) == 0 {
-		return nil, errors.New("empty prev shards")
-	}
-	for _, name := range excludedPrevShards {
-		if _, ok := prevShards[name]; !ok {
-			return nil, fmt.Errorf("unknown prev shard from excludedPrevShards: %s", name)
-		}
-	}
-	for name := range prevShardsStartFrom {
-		if _, ok := prevShards[name]; !ok {
-			return nil, fmt.Errorf("unknown prev shard from prevShardsStartFrom: %s", name)
-		}
-	}
+) *Migrator {
 	return &Migrator{
-		newShards:           newShards,
 		prevShards:          prevShards,
+		newShardsPool:       newShardsPool,
 		prevShardsStartFrom: prevShardsStartFrom,
 		excludedPrevShards:  excludedPrevShards,
 		batchLimit:          batchLimit,
 		isMigrating:         isMigrating,
-	}, nil
+	}
 }
 
-func (m *Migrator) Run(ctx context.Context) error {
+func (m *Migrator) Run(ctx context.Context) {
+	migrators := make([]*shardMigrator, 0)
 	wg := new(sync.WaitGroup)
 	for prevShardName, prevDB := range m.prevShards {
 		if slices.Contains(m.excludedPrevShards, prevShardName) {
 			log.Printf("skipping migration for prev shard %s", prevShardName)
 			continue
 		}
-		productsMigrator := shardMigrator{
-			prevDB:        prevDB,
+		migrator := &shardMigrator{
+			prevRepo:      prevDB,
 			prevShardName: prevShardName,
-			newShards:     m.newShards,
+			newShards:     m.newShardsPool,
 			batchLimit:    m.batchLimit,
 			startFrom:     m.prevShardsStartFrom[prevShardName],
 			isMigrating:   m.isMigrating,
 		}
+		migrators = append(migrators, migrator)
 		wg.Go(func() {
-			log.Printf("running migrations for ")
-			productsMigrator.run(ctx)
+			log.Printf("running migrations for %s", prevShardName)
+			migrator.run(ctx)
 		})
 	}
-
 	wg.Wait()
+
+	for _, migrator := range migrators {
+		log.Println(migrator.state())
+	}
+
 	log.Println("migration finished")
-	return nil
 }
 
 type shardMigrator struct {
-	prevDB        *sql.DB
-	prevShardName storage.ShardName
-	newShards     storage.Shards[*sql.DB]
-	batchLimit    int64
+	prevRepo      Repository
+	prevShardName sharding.ShardName
+	newShards     *sharding.Pool[Repository]
+	batchLimit    int
 	startFrom     int64
 	isMigrating   bool
+
+	err        error
+	lastNextID int64 // пустой если err == nil
 }
 
 func (m *shardMigrator) run(ctx context.Context) {
-	id := m.startFrom
+	nextID := m.startFrom
 
 	for {
 		start := time.Now()
-		log.Printf("starting loop for %s shard, id=%d", m.prevShardName, id)
-		lastProductID, err := m.loop(ctx, id)
+		log.Printf("starting loop for %s shard, id=%d", m.prevShardName, nextID)
+		lastProductID, err := m.loop(ctx, nextID)
 		if err != nil {
-			restartData := fmt.Sprintf("prevShardName: %s, lastID: %d", m.prevShardName, id)
-			log.Printf("%s runner failed. Data: %s. Reason: %v", logPrefixForRestartData, restartData, err)
+			log.Printf("runner for %s shard failed: %v", m.prevShardName, err)
+			m.lastNextID = nextID
+			m.err = err
 			return
 		}
 		if lastProductID == -1 {
 			log.Printf("worker for %s finished", m.prevShardName)
 			return
 		}
-		id = lastProductID
+		nextID = lastProductID + 1
 
 		log.Printf("loop for %s shard finished, time elapsed: %dms", m.prevShardName, time.Since(start).Milliseconds())
 	}
 }
 
-func (m *shardMigrator) loop(ctx context.Context, lastSelectedID int64) (int64, error) {
-	products, err := m.selectProductsFromPrevShard(ctx, lastSelectedID)
+// state возвращает готовый лог по статусу миграции. Вызывать только после завершения [shardMigrator.run].
+func (m *shardMigrator) state() string {
+	if m.err == nil {
+		return fmt.Sprintf("runner [%s] finished successfully.", m.prevShardName)
+	}
+	return fmt.Sprintf("runner [%s] FAILED, start next migration from id %d. Reason: %v", m.prevShardName, m.lastNextID, m.err)
+}
+
+func (m *shardMigrator) loop(ctx context.Context, fromID int64) (int64, error) {
+	products, err := m.prevRepo.ListByIDLimited(ctx, fromID, m.batchLimit)
 	if err != nil {
 		return 0, err
 	}
@@ -140,46 +139,11 @@ func (m *shardMigrator) loop(ctx context.Context, lastSelectedID int64) (int64, 
 	return lastProductID, m.deleteProductsFromPrevShard(ctx, products)
 }
 
-func (m *shardMigrator) selectProductsFromPrevShard(ctx context.Context, lastSelectedID int64) ([]models.Product, error) {
-	query := "SELECT id, user_id, name, price FROM products WHERE id > $1 ORDER BY id LIMIT $2"
-	rows, err := m.prevDB.QueryContext(ctx, query, lastSelectedID, m.batchLimit)
-	if err != nil {
-		return nil, fmt.Errorf("query ctx: %w", err)
-	}
-	defer rows.Close()
-
-	products := make([]models.Product, 0, m.batchLimit)
-	for rows.Next() {
-		var product models.Product
-		if err = rows.Scan(&product.ID, &product.UserID, &product.Name, &product.Price); err != nil {
-			return nil, fmt.Errorf("scan: %w", err)
-		}
-		products = append(products, product)
-	}
-	if rows.Err() != nil {
-		return nil, fmt.Errorf("rows err: %w", err)
-	}
-	return products, nil
-}
-
-func (m *shardMigrator) deleteProductsFromPrevShard(ctx context.Context, products []models.Product) error {
-	ids := make([]int64, 0)
-	for _, product := range products {
-		newShardName, _ := m.newShards.Get(strconv.FormatInt(product.UserID, 10))
-		if newShardName != m.prevShardName { // удаляем продукты, которые уехали в новые шарды
-			ids = append(ids, product.ID)
-		}
-	}
-	query := "DELETE FROM products WHERE id = ANY($1)"
-	_, err := m.prevDB.ExecContext(ctx, query, pq.Array(ids))
-	return err
-}
-
-func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products []models.Product) error {
+func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products []domain.Product) error {
 	// split products by new shards
-	productsByNewShards := make(map[storage.ShardName][]models.Product)
+	productsByNewShards := make(map[sharding.ShardName][]domain.Product)
 	for _, product := range products {
-		newShardName, _ := m.newShards.Get(strconv.FormatInt(product.UserID, 10))
+		newShardName := m.newShards.GetName(strconv.FormatInt(product.UserID, 10))
 		if newShardName != m.prevShardName {
 			productsByNewShards[newShardName] = append(productsByNewShards[newShardName], product)
 		}
@@ -189,7 +153,7 @@ func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products 
 	// insert products to new shards
 	for newShardName, products := range productsByNewShards {
 		eg.Go(func() error {
-			err := insertProductsToShard(egCtx, products, m.newShards[newShardName])
+			err := m.newShards.GetByName(newShardName).CreateBatch(egCtx, products)
 			if err != nil {
 				return fmt.Errorf("failed inserting to new shard %s: %w", newShardName, err)
 			}
@@ -199,16 +163,13 @@ func (m *shardMigrator) insertProductsToNewShards(ctx context.Context, products 
 	return eg.Wait()
 }
 
-func insertProductsToShard(ctx context.Context, products []models.Product, db *sql.DB) error {
-	args := make([]any, 0, len(products)*fieldsToInsertInProduct)
-	values := make([]string, 0, len(products))
+func (m *shardMigrator) deleteProductsFromPrevShard(ctx context.Context, products []domain.Product) error {
+	ids := make([]int64, 0)
 	for _, product := range products {
-		values = append(values, fmt.Sprintf("($%d, $%d, $%d, $%d)", len(args)+1, len(args)+2, len(args)+3, len(args)+4))
-		args = append(args, product.ID, product.UserID, product.Name, product.Price)
+		newShardName := m.newShards.GetName(strconv.FormatInt(product.UserID, 10))
+		if newShardName != m.prevShardName { // удаляем продукты, которые уехали в новые шарды
+			ids = append(ids, product.ID)
+		}
 	}
-	// запрос не обновляет уже перенесенные данные. Они могут быть новее в новом шарде
-	query := fmt.Sprintf("INSERT INTO products (id, user_id, name, price) VALUES %s "+
-		"ON CONFLICT (id) DO NOTHING", strings.Join(values, ","))
-	_, err := db.ExecContext(ctx, query, args...)
-	return err
+	return m.prevRepo.DeleteBatch(ctx, ids)
 }

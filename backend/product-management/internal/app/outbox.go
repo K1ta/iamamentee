@@ -16,7 +16,11 @@ type OutboxApp struct {
 	dbs           map[string]*sql.DB
 }
 
-func NewOutboxApp(processor *outbox.Processor, kafkaProducer *kafka.Producer, dbs map[string]*sql.DB) *OutboxApp {
+func NewOutboxApp(
+	processor *outbox.Processor,
+	kafkaProducer *kafka.Producer,
+	dbs map[string]*sql.DB,
+) *OutboxApp {
 	return &OutboxApp{processor: processor, kafkaProducer: kafkaProducer, dbs: dbs}
 }
 
@@ -33,13 +37,7 @@ func (app *OutboxApp) shutdown() {
 	defer cancel()
 
 	wg := &sync.WaitGroup{}
-	for name, db := range app.dbs {
-		wg.Go(func() {
-			if err := db.Close(); err != nil {
-				log.Printf("failed to close %s db: %v", name, err)
-			}
-		})
-	}
+	closeDBs(wg, app.dbs)
 	wg.Go(func() {
 		if err := app.kafkaProducer.Close(); err != nil {
 			log.Printf("failed to close kafka producer: %v", err)

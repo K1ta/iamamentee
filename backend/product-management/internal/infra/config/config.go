@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
-	"product-management/internal/infra/storage"
+	"product-management/internal/pkg/sharding"
 	"strings"
 	"time"
 
@@ -13,11 +13,12 @@ import (
 type PostgresName = string
 
 type Config struct {
-	Listen       string                             `env:"APP_LISTEN"`
-	KafkaBrokers []string                           `env:"APP_KAFKA_BROKERS"`
-	LogToken     string                             `env:"APP_LOG_TOKEN"`
-	Shards       map[storage.ShardName]PostgresName `env:"APP_SHARDS"`
-	PrevShards   map[storage.ShardName]PostgresName `env:"APP_PREV_SHARDS"`
+	Listen               string                              `env:"APP_LISTEN"`
+	KafkaBrokers         []string                            `env:"APP_KAFKA_BROKERS"`
+	KafkaWriterBatchSize int                                 `env:"APP_KAFKA_WRITER_BATCH_SIZE"`
+	LogToken             string                              `env:"APP_LOG_TOKEN"`
+	Shards               map[sharding.ShardName]PostgresName `env:"APP_SHARDS"`
+	PrevShards           map[sharding.ShardName]PostgresName `env:"APP_PREV_SHARDS"`
 
 	OutboxConfig         OutboxConfig
 	ShardsMigratorConfig ShardsMigratorConfig
@@ -36,14 +37,16 @@ type PostgresConfig struct {
 }
 
 type OutboxConfig struct {
-	PauseWhenNoWork time.Duration `env:"APP_OUTBOX_PAUSE_WHEN_NO_WORK"`
-	MaxAttempts     int           `env:"APP_OUTBOX_MAX_ATTEMPTS"`
+	PauseWhenNoWork    time.Duration `env:"APP_OUTBOX_PAUSE_WHEN_NO_WORK"`
+	MaxAttempts        int           `env:"APP_OUTBOX_MAX_ATTEMPTS"`
+	BatchLimit         int           `env:"APP_OUTBOX_PROCESSOR_BATCH_SIZE"`
+	AttemptDurationSec int           `env:"APP_OUTBOX_PROCESSOR_ATTEMPT_DURATION_SECONDS"`
 }
 
 type ShardsMigratorConfig struct {
-	PrevShardsStartFrom map[storage.ShardName]int64 `env:"APP_SHARDSMIGRATOR_PREV_SHARDS_START_FROM"`
-	ExcludedPrevShards  []storage.ShardName         `env:"APP_SHARDSMIGRATOR_EXCLUDED_PREV_SHARDS"`
-	BatchLimit          int64                       `env:"APP_SHARDSMIGRATOR_BATCH_LIMIT"`
+	PrevShardsStartFrom map[sharding.ShardName]int64 `env:"APP_SHARDSMIGRATOR_PREV_SHARDS_START_FROM"`
+	ExcludedPrevShards  []sharding.ShardName         `env:"APP_SHARDSMIGRATOR_EXCLUDED_PREV_SHARDS"`
+	BatchLimit          int                          `env:"APP_SHARDSMIGRATOR_BATCH_LIMIT"`
 }
 
 func Parse() (*Config, error) {
@@ -52,6 +55,7 @@ func Parse() (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
+	// Заполняем коннекты к базе
 	postgresConfigsEnv := make(map[PostgresName]map[string]string)
 	for k, v := range env.ToMap(os.Environ()) {
 		if !strings.HasPrefix(k, "APP_POSTGRES_") {

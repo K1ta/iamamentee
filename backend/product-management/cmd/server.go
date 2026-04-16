@@ -6,10 +6,10 @@ import (
 	"log"
 	"product-management/internal/app"
 	"product-management/internal/app/service"
-	"product-management/internal/app/transport/http"
+	"product-management/internal/app/transport/httpapi"
 	"product-management/internal/infra/config"
-	"product-management/internal/infra/storage"
 	"product-management/internal/infra/storage/postgres"
+	"product-management/internal/pkg/sharding"
 	"product-management/internal/pkg/snowflake"
 	"time"
 
@@ -31,31 +31,28 @@ var serverCmd = &cobra.Command{
 			return fmt.Errorf("open postgres connections: %w", err)
 		}
 
-		shards, err := initDbShards(dbs, cfg.Shards)
+		shardsPool, err := initShardsPool(dbs, cfg.Shards)
 		if err != nil {
 			return fmt.Errorf("init shards: %w", err)
 		}
-		prevShards, err := initDbShards(dbs, cfg.PrevShards)
-		if err != nil {
-			return fmt.Errorf("init prev shards: %w", err)
+		var prevShardsPool *sharding.Pool[*sql.DB]
+		if len(cfg.PrevShards) > 0 {
+			log.Println("found prev shards in config")
+			prevShardsPool, err = initShardsPool(dbs, cfg.PrevShards)
+			if err != nil {
+				return fmt.Errorf("init prev shards: %w", err)
+			}
 		}
 
-		productRepo, err := createShardedProductRepository(mapDBsToProductRepos(shards), mapDBsToProductRepos(prevShards))
-		if err != nil {
-			return err
-		}
+		productView := postgres.NewProductView(shardsPool, prevShardsPool)
 
-		log.Println("max outbox attemts:", cfg.OutboxConfig.MaxAttempts)
-		uowManager, err := postgres.NewUnitOfWorkManager(shards, cfg.OutboxConfig.MaxAttempts)
-		if err != nil {
-			return fmt.Errorf("new unit of work manager: %w", err)
-		}
+		uowFactory := postgres.NewUnitOfWorkFactory(shardsPool, cfg.OutboxConfig.MaxAttempts)
 
-		productService := service.NewProductService(productRepo, snowflake.NewSnowflake(), uowManager)
-		productHandler := http.NewProductHandler(productService)
-		router := http.NewRouter(productHandler)
+		productService := service.NewProductService(productView, snowflake.NewSnowflake(), uowFactory)
+		productHandler := httpapi.NewProductHandler(productService)
+		router := httpapi.NewRouter(productHandler)
 
-		app := app.NewServerApp(dbs, http.NewHttpServer(cfg.Listen, router, time.Second*5))
+		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5))
 		return app.Run(cmd.Context())
 	},
 }
@@ -72,40 +69,14 @@ func openConnections(configs map[config.PostgresName]config.PostgresConfig) (map
 	return dbs, nil
 }
 
-func initDbShards(dbs map[config.PostgresName]*sql.DB, shardsConfig map[storage.ShardName]config.PostgresName) (storage.Shards[*sql.DB], error) {
-	shards := make(storage.Shards[*sql.DB])
+func initShardsPool(dbs map[config.PostgresName]*sql.DB, shardsConfig map[sharding.ShardName]config.PostgresName) (*sharding.Pool[*sql.DB], error) {
+	shards := make(map[sharding.ShardName]*sql.DB)
 	for shardName, dbConnName := range shardsConfig {
 		db, ok := dbs[dbConnName]
 		if !ok {
-			return nil, fmt.Errorf("connection %s for shard %s not found", dbConnName, shardName)
+			return nil, fmt.Errorf("connection %s not found", dbConnName)
 		}
 		shards[shardName] = db
 	}
-	return shards, nil
-}
-
-func mapDBsToProductRepos(shards storage.Shards[*sql.DB]) storage.Shards[*postgres.ProductRepository] {
-	repos := make(storage.Shards[*postgres.ProductRepository])
-	for shardName, db := range shards {
-		repos[shardName] = postgres.NewProductRepository(db)
-	}
-	return repos
-}
-
-func createShardedProductRepository(shards, prevShards storage.Shards[*postgres.ProductRepository]) (service.ProductRepository, error) {
-	shardsRepo, err := postgres.NewShardedProductRepository(shards)
-	if err != nil {
-		return nil, fmt.Errorf("new sharded product repo for new shards: %w", err)
-	}
-	if len(prevShards) == 0 {
-		log.Println("prev shards empty, shard migration mode is off")
-		return shardsRepo, nil
-	}
-
-	log.Println("prev shards not empty, use db in shard migration mode")
-	prevShardsRepo, err := postgres.NewShardedProductRepository(prevShards)
-	if err != nil {
-		return nil, fmt.Errorf("new sharded product repo for prev shards: %w", err)
-	}
-	return postgres.NewMigratingProductRepository(shardsRepo, prevShardsRepo), nil
+	return sharding.NewPool(shards, sharding.RendezvousResolver)
 }

@@ -1,14 +1,14 @@
 package cmd
 
 import (
-	"database/sql"
 	"fmt"
 	"log"
 	"product-management/internal/app"
 	"product-management/internal/app/jobs/outbox"
 	"product-management/internal/infra/config"
 	"product-management/internal/infra/messaging/kafka"
-	"product-management/internal/infra/storage"
+	"product-management/internal/infra/storage/postgres"
+	"product-management/internal/pkg/sharding"
 
 	"github.com/spf13/cobra"
 )
@@ -28,22 +28,41 @@ var outboxCmd = &cobra.Command{
 			return fmt.Errorf("open postgres connections: %w", err)
 		}
 
-		shards, err := initDbShards(dbs, cfg.Shards)
-		if err != nil {
-			return fmt.Errorf("init shards: %w", err)
+		// Outbox процессор запускает раннер для каждого шарда. Нам не важно имя шарда,
+		// важно только запустить один раннер для одной базы. Поэтому мы игнорируем shardName
+		// из конфига и используем имя коннекта как shardName
+		shards := make(map[sharding.ShardName]outbox.Repository)
+		for _, dbConnName := range cfg.Shards {
+			if _, ok := dbs[dbConnName]; !ok {
+				return fmt.Errorf("connection %s not found", dbConnName)
+			}
+			shards[sharding.ShardName(dbConnName)] = postgres.NewOutboxProcessorRepository(
+				dbs[dbConnName],
+				cfg.OutboxConfig.AttemptDurationSec,
+				cfg.OutboxConfig.BatchLimit,
+			)
 		}
-		prevShards, err := initDbShards(dbs, cfg.PrevShards)
-		if err != nil {
-			return fmt.Errorf("init prev shards: %w", err)
+		for _, dbConnName := range cfg.PrevShards {
+			if _, ok := dbs[dbConnName]; !ok {
+				return fmt.Errorf("connection %s not found", dbConnName)
+			}
+			// Если мы уже добавили шард по такому dbConnName, то не заменяем репозиторий
+			if _, ok := shards[sharding.ShardName(dbConnName)]; ok {
+				continue
+			}
+			shards[sharding.ShardName(dbConnName)] = postgres.NewOutboxProcessorRepository(
+				dbs[dbConnName],
+				cfg.OutboxConfig.AttemptDurationSec,
+				cfg.OutboxConfig.BatchLimit,
+			)
 		}
 
-		kafkaProducer := kafka.NewProducer(cfg.KafkaBrokers)
+		kafkaProducer := kafka.NewProducer(cfg.KafkaBrokers, cfg.KafkaWriterBatchSize)
 
 		processor, err := outbox.NewProcessor(
-			[]storage.Shards[*sql.DB]{shards, prevShards},
+			shards,
 			kafkaProducer,
 			cfg.OutboxConfig.PauseWhenNoWork,
-			cfg.OutboxConfig.MaxAttempts,
 		)
 		if err != nil {
 			return fmt.Errorf("new outbox processor: %w", err)
