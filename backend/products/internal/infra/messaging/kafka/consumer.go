@@ -1,4 +1,4 @@
-package app
+package kafka
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"products/internal/domain"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -16,9 +17,14 @@ const (
 	KafkaProductEventTypeCreated = "created"
 )
 
+// productIndexer позволяет не зависеть от конкретной реализации поискового хранилища.
+type productIndexer interface {
+	Index(ctx context.Context, product *domain.Product) error
+}
+
 type KafkaProductEvent struct {
-	Type string   `json:"type"`
-	Body *Product `json:"product"`
+	Type string         `json:"type"`
+	Body *domain.Product `json:"product"`
 }
 
 func (e *KafkaProductEvent) Validate() error {
@@ -38,11 +44,11 @@ type ProductEventConsumer struct {
 	reader        *kafka.Reader
 	fetchBackoff  retry.Backoff
 	commitBackoff retry.Backoff
-	repo          SearchRepository
-	store         *SearchStore
+	repo          domain.SearchRepository
+	store         productIndexer
 }
 
-func NewProductEventConsumer(brokers []string, repo SearchRepository, store *SearchStore) *ProductEventConsumer {
+func NewProductEventConsumer(brokers []string, repo domain.SearchRepository, store productIndexer) *ProductEventConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: brokers,
 		GroupID: "products.product",

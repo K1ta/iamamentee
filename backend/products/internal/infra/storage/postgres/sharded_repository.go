@@ -1,35 +1,37 @@
-package app
+package postgres
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"log"
+	"products/internal/domain"
+	"products/internal/pkg/sharding"
 	"strconv"
 
 	"golang.org/x/sync/errgroup"
 )
 
 type ShardedSearchRepository struct {
-	shards map[string]SearchRepository
+	shards map[sharding.ShardName]domain.SearchRepository
 }
 
-func NewShardedSearchRepository(shards map[string]SearchRepository) (*ShardedSearchRepository, error) {
+func NewShardedSearchRepository(shards map[sharding.ShardName]domain.SearchRepository) (*ShardedSearchRepository, error) {
 	if len(shards) == 0 {
 		return nil, errors.New("no shards")
 	}
 	return &ShardedSearchRepository{shards: shards}, nil
 }
 
-func (r *ShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]Product, error) {
-	shardForIDs := make(map[ShardName][]int64, len(r.shards))
+func (r *ShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain.Product, error) {
+	shardForIDs := make(map[sharding.ShardName][]int64, len(r.shards))
 	for _, id := range ids {
-		shardName, _ := GetShard(r.shards, strconv.FormatInt(id, 10))
+		shardName, _ := sharding.GetShard(r.shards, strconv.FormatInt(id, 10))
 		shardForIDs[shardName] = append(shardForIDs[shardName], id)
 	}
 
 	// TODO возможно, лучше сделать eventual consistency и отдавать часть результата с успешных шардов
-	productsCh := make(chan []Product, len(shardForIDs)) // буфер равен числу писателей -> никто не блокируется
+	productsCh := make(chan []domain.Product, len(shardForIDs)) // буфер равен числу писателей -> никто не блокируется
 	eg, egCtx := errgroup.WithContext(ctx)
 	for shardName, idsInShard := range shardForIDs {
 		eg.Go(func() error {
@@ -49,7 +51,7 @@ func (r *ShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([
 		close(productsCh)
 	}()
 
-	res := make([]Product, 0)
+	res := make([]domain.Product, 0)
 	for products := range productsCh { // можем не проверять контекст, так как канал закроется после eg.Wait()
 		res = append(res, products...)
 	}
@@ -59,8 +61,8 @@ func (r *ShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([
 	return res, nil
 }
 
-func (r *ShardedSearchRepository) Create(ctx context.Context, product *Product) error {
-	_, repo := GetShard(r.shards, strconv.FormatInt(product.ID, 10))
+func (r *ShardedSearchRepository) Create(ctx context.Context, product *domain.Product) error {
+	_, repo := sharding.GetShard(r.shards, strconv.FormatInt(product.ID, 10))
 	return repo.Create(ctx, product)
 }
 
@@ -73,7 +75,7 @@ func NewMigratingShardedSearchRepository(repo, prevShardsRepo *ShardedSearchRepo
 	return &MigratingShardedSearchRepository{repo: repo, prevShardsRepo: prevShardsRepo}
 }
 
-func (r *MigratingShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]Product, error) {
+func (r *MigratingShardedSearchRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain.Product, error) {
 	products, err := r.repo.ListByIDs(ctx, ids)
 	if err != nil {
 		return nil, fmt.Errorf("list from current shards: %w", err)
@@ -103,6 +105,6 @@ func (r *MigratingShardedSearchRepository) ListByIDs(ctx context.Context, ids []
 	return append(products, productsFromOldShards...), nil
 }
 
-func (r *MigratingShardedSearchRepository) Create(ctx context.Context, product *Product) error {
+func (r *MigratingShardedSearchRepository) Create(ctx context.Context, product *domain.Product) error {
 	return r.repo.Create(ctx, product)
 }

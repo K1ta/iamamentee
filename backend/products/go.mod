@@ -11,6 +11,7 @@ require (
 	github.com/lib/pq v1.12.0
 	github.com/segmentio/kafka-go v0.4.50
 	github.com/sethvargo/go-retry v0.3.0
+	github.com/spf13/cobra v1.10.2
 	golang.org/x/sync v0.20.0
 )
 
@@ -19,8 +20,10 @@ require (
 	github.com/ggicci/owl v0.8.2 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.35.0 // indirect

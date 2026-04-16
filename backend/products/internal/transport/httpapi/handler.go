@@ -1,38 +1,43 @@
-package app
+package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
+	"products/internal/domain"
 
 	"github.com/ggicci/httpin"
 	"github.com/ggicci/httpin/core"
 )
 
-type (
-	SearchRequest struct {
-		Name      string `in:"query=name"`
-		PriceFrom int64  `in:"query=from"`
-		PriceTo   int64  `in:"query=to"`
-	}
-)
-
-type SearchHandler struct {
-	repo  SearchRepository
-	store *SearchStore
+type searchRequest struct {
+	Name      string `in:"query=name"`
+	PriceFrom int64  `in:"query=from"`
+	PriceTo   int64  `in:"query=to"`
 }
 
-func NewSearchHandler(repo SearchRepository, store *SearchStore) *SearchHandler {
+// productSearcher позволяет не зависеть от конкретной реализации поискового хранилища.
+type productSearcher interface {
+	Search(ctx context.Context, query domain.SearchQuery) ([]int64, error)
+}
+
+type SearchHandler struct {
+	repo  domain.SearchRepository
+	store productSearcher
+}
+
+func NewSearchHandler(repo domain.SearchRepository, store productSearcher) *SearchHandler {
 	return &SearchHandler{repo: repo, store: store}
 }
 
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
-	req, err := httpin.Decode[SearchRequest](r)
+	req, err := httpin.Decode[searchRequest](r)
 	if err != nil {
 		msg := "Invalid request"
-		if invalidFielError, ok := errors.AsType[*core.InvalidFieldError](err); ok {
-			msg = "Invalid param '" + invalidFielError.Key + "'"
+		if invalidFieldError, ok := errors.AsType[*core.InvalidFieldError](err); ok {
+			msg = "Invalid param '" + invalidFieldError.Key + "'"
 		}
 		log.Println("failed to parse request:", err)
 		http.Error(w, msg, http.StatusBadRequest)
@@ -40,7 +45,13 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("got search request:", req)
 
-	productIDs, err := h.store.Search(r.Context(), req)
+	query := domain.SearchQuery{
+		Name:      req.Name,
+		PriceFrom: req.PriceFrom,
+		PriceTo:   req.PriceTo,
+	}
+
+	productIDs, err := h.store.Search(r.Context(), query)
 	if err != nil {
 		log.Println("Elastic failed:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

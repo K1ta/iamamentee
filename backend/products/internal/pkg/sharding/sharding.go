@@ -1,8 +1,8 @@
-package app
+package sharding
 
-import (
-	"github.com/cespare/xxhash/v2"
-)
+import "github.com/cespare/xxhash/v2"
+
+type ShardName = string
 
 func GetShard[V any](shards map[ShardName]V, key string) (ShardName, V) {
 	if len(shards) == 0 {

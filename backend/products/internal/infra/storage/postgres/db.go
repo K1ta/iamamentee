@@ -1,14 +1,15 @@
-package app
+package postgres
 
 import (
 	"database/sql"
 	"fmt"
+	"products/internal/infra/config"
 
 	_ "github.com/lib/pq"
 )
 
-func NewDBConnections(dbs map[DBConnectionName]DSN) (map[DBConnectionName]*sql.DB, error) {
-	res := make(map[DBConnectionName]*sql.DB, len(dbs))
+func NewDBConnections(dbs map[config.DBConnectionName]config.DSN) (map[config.DBConnectionName]*sql.DB, error) {
+	res := make(map[config.DBConnectionName]*sql.DB, len(dbs))
 	for name, dsn := range dbs {
 		db, err := sql.Open("postgres", string(dsn))
 		if err != nil {
