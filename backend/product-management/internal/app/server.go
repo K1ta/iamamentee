@@ -4,8 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
-	"product-management/internal/app/transport/http"
-	"product-management/internal/infra/config"
+	"product-management/internal/transport/httpapi"
 	"sync"
 	"time"
 
@@ -13,11 +12,11 @@ import (
 )
 
 type ServerApp struct {
-	dbs        map[config.PostgresName]*sql.DB
-	httpServer *http.HttpServer
+	dbs        map[string]*sql.DB
+	httpServer *httpapi.Server
 }
 
-func NewServerApp(dbs map[config.PostgresName]*sql.DB, httpServer *http.HttpServer) *ServerApp {
+func NewServerApp(dbs map[string]*sql.DB, httpServer *httpapi.Server) *ServerApp {
 	return &ServerApp{dbs: dbs, httpServer: httpServer}
 }
 
@@ -38,13 +37,7 @@ func (app *ServerApp) shutdown() {
 	defer cancel()
 
 	wg := &sync.WaitGroup{}
-	for name, db := range app.dbs {
-		wg.Go(func() {
-			if err := db.Close(); err != nil {
-				log.Printf("failed to close %s db: %v", name, err)
-			}
-		})
-	}
+	closeDBs(wg, app.dbs)
 
 	done := make(chan struct{})
 	go func() {
@@ -56,5 +49,15 @@ func (app *ServerApp) shutdown() {
 	case <-done:
 	case <-ctx.Done():
 		log.Println("shutting down context timeout")
+	}
+}
+
+func closeDBs(wg *sync.WaitGroup, dbs map[string]*sql.DB) {
+	for name, db := range dbs {
+		wg.Go(func() {
+			if err := db.Close(); err != nil {
+				log.Printf("failed to close %s db: %v", name, err)
+			}
+		})
 	}
 }

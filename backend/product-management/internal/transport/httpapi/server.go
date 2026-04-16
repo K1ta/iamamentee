@@ -1,4 +1,4 @@
-package http
+package httpapi
 
 import (
 	"context"
@@ -8,16 +8,16 @@ import (
 	"time"
 )
 
-type HttpServer struct {
+type Server struct {
 	server          *http.Server
 	shutdownTimeout time.Duration
 }
 
-func NewHttpServer(addr string, handler http.Handler, shutdownTimeout time.Duration) *HttpServer {
+func NewServer(addr string, handler http.Handler, shutdownTimeout time.Duration) *Server {
 	if shutdownTimeout == 0 {
 		shutdownTimeout = time.Second
 	}
-	return &HttpServer{
+	return &Server{
 		server: &http.Server{
 			Addr:    addr,
 			Handler: handler,
@@ -26,7 +26,7 @@ func NewHttpServer(addr string, handler http.Handler, shutdownTimeout time.Durat
 	}
 }
 
-func (s *HttpServer) Run(ctx context.Context) error {
+func (s *Server) Run(ctx context.Context) error {
 	errCh := make(chan error, 1)
 	go func() {
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {

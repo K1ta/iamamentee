@@ -1,6 +1,7 @@
-package models
+package domain
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 )
@@ -38,4 +39,13 @@ type ProductEvent struct {
 func (e *ProductEvent) ToJSON() string {
 	res, _ := json.Marshal(e)
 	return string(res)
+}
+
+type ProductRepository interface {
+	Create(ctx context.Context, product *Product) error
+}
+
+type ProductView interface {
+	GetByID(ctx context.Context, id, userID int64) (*Product, error)
+	List(ctx context.Context, userID int64) ([]Product, error)
 }

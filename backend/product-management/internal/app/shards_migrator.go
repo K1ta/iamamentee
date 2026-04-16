@@ -4,28 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"log"
-	"product-management/internal/app/jobs/shardsmigrator"
-	"product-management/internal/infra/config"
+	"product-management/internal/workers/shardsmigrator"
 	"sync"
 	"time"
 )
 
 type ShardsMigratorApp struct {
-	dbs      map[config.PostgresName]*sql.DB
+	dbs      map[string]*sql.DB
 	migrator *shardsmigrator.Migrator
 }
 
 func NewShardsMigratorApp(
-	dbs map[config.PostgresName]*sql.DB,
+	dbs map[string]*sql.DB,
 	migrator *shardsmigrator.Migrator,
 ) *ShardsMigratorApp {
 	return &ShardsMigratorApp{dbs: dbs, migrator: migrator}
 }
 
-func (app *ShardsMigratorApp) Run(ctx context.Context) error {
-	err := app.migrator.Run(ctx)
+func (app *ShardsMigratorApp) Run(ctx context.Context) {
+	app.migrator.Run(ctx)
 	app.shutdown()
-	return err
 }
 
 func (app *ShardsMigratorApp) shutdown() {
@@ -34,13 +32,7 @@ func (app *ShardsMigratorApp) shutdown() {
 	defer cancel()
 
 	wg := &sync.WaitGroup{}
-	for name, db := range app.dbs {
-		wg.Go(func() {
-			if err := db.Close(); err != nil {
-				log.Printf("failed to close %s db: %v", name, err)
-			}
-		})
-	}
+	closeDBs(wg, app.dbs)
 
 	done := make(chan struct{})
 	go func() {

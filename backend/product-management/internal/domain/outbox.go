@@ -1,4 +1,6 @@
-package models
+package domain
+
+import "context"
 
 type OutboxEventType = string
 
@@ -11,4 +13,8 @@ type OutboxEvent struct {
 	Type    OutboxEventType
 	Key     string
 	Payload string
+}
+
+type OutboxRepository interface {
+	Create(ctx context.Context, event *OutboxEvent) error
 }

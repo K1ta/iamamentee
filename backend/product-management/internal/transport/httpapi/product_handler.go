@@ -1,11 +1,11 @@
-package http
+package httpapi
 
 import (
 	"context"
 	"encoding/json"
 	"log"
 	"net/http"
-	"product-management/internal/app/models"
+	"product-management/internal/domain"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -17,9 +17,9 @@ type ProductHandler struct {
 
 type (
 	ProductService interface {
-		Create(ctx context.Context, userID int64, name string, price int64) (*models.Product, error)
-		GetByID(ctx context.Context, id, userID int64) (*models.Product, error)
-		List(ctx context.Context, userID int64) ([]models.Product, error)
+		Create(ctx context.Context, userID int64, name string, price int64) (*domain.Product, error)
+		GetByID(ctx context.Context, id, userID int64) (*domain.Product, error)
+		List(ctx context.Context, userID int64) ([]domain.Product, error)
 	}
 )
 

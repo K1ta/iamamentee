@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"product-management/internal/app"
-	"product-management/internal/app/jobs/shardsmigrator"
 	"product-management/internal/infra/config"
+	"product-management/internal/infra/storage/postgres"
+	"product-management/internal/pkg/sharding"
+	"product-management/internal/workers/shardsmigrator"
 
 	"github.com/spf13/cobra"
 )
@@ -35,29 +38,29 @@ var shardsMigrateCmd = &cobra.Command{
 			return fmt.Errorf("open postgres connections: %w", err)
 		}
 
-		shards, err := initDbShards(dbs, cfg.Shards)
-		if err != nil {
-			return fmt.Errorf("init shards: %w", err)
+		prevShards := make(map[sharding.ShardName]shardsmigrator.Repository)
+		for shardName, dbConnName := range cfg.PrevShards {
+			if _, ok := dbs[dbConnName]; !ok {
+				return fmt.Errorf("connection %s not found for prev shards", dbConnName)
+			}
+			prevShards[shardName] = postgres.NewProductRepository(dbs[dbConnName])
 		}
-		prevShards, err := initDbShards(dbs, cfg.PrevShards)
+		newShardsPool, err := initShardsMigratorProductRepoPool(dbs, cfg.Shards)
 		if err != nil {
-			return fmt.Errorf("init prev shards: %w", err)
+			return fmt.Errorf("init new shards pool: %w", err)
 		}
 
-		migrator, err := shardsmigrator.New(
-			shards,
+		migrator := shardsmigrator.New(
 			prevShards,
+			newShardsPool,
 			cfg.ShardsMigratorConfig.PrevShardsStartFrom,
 			cfg.ShardsMigratorConfig.ExcludedPrevShards,
 			cfg.ShardsMigratorConfig.BatchLimit,
 			true,
 		)
-		if err != nil {
-			return fmt.Errorf("new shards migrator: %w", err)
-		}
-
 		app := app.NewShardsMigratorApp(dbs, migrator)
-		return app.Run(cmd.Context())
+		app.Run(cmd.Context())
+		return nil
 	},
 }
 
@@ -76,28 +79,43 @@ var shardsCleanupCmd = &cobra.Command{
 			return fmt.Errorf("open postgres connections: %w", err)
 		}
 
-		shards, err := initDbShards(dbs, cfg.Shards)
-		if err != nil {
-			return fmt.Errorf("init shards: %w", err)
+		prevShards := make(map[sharding.ShardName]shardsmigrator.Repository)
+		for shardName, dbConnName := range cfg.PrevShards {
+			if _, ok := dbs[dbConnName]; !ok {
+				return fmt.Errorf("connection %s not found for prev shards", dbConnName)
+			}
+			prevShards[shardName] = postgres.NewProductRepository(dbs[dbConnName])
 		}
-		prevShards, err := initDbShards(dbs, cfg.PrevShards)
+		newShardsPool, err := initShardsMigratorProductRepoPool(dbs, cfg.Shards)
 		if err != nil {
-			return fmt.Errorf("init prev shards: %w", err)
+			return fmt.Errorf("init new shards pool: %w", err)
 		}
 
-		migrator, err := shardsmigrator.New(
-			shards,
+		migrator := shardsmigrator.New(
 			prevShards,
+			newShardsPool,
 			cfg.ShardsMigratorConfig.PrevShardsStartFrom,
 			cfg.ShardsMigratorConfig.ExcludedPrevShards,
 			cfg.ShardsMigratorConfig.BatchLimit,
 			false,
 		)
-		if err != nil {
-			return fmt.Errorf("new shards migrator: %w", err)
-		}
-
 		app := app.NewShardsMigratorApp(dbs, migrator)
-		return app.Run(cmd.Context())
+		app.Run(cmd.Context())
+		return nil
 	},
+}
+
+func initShardsMigratorProductRepoPool(
+	dbs map[config.PostgresName]*sql.DB,
+	shardsConfig map[sharding.ShardName]config.PostgresName,
+) (*sharding.Pool[shardsmigrator.Repository], error) {
+	shards := make(map[sharding.ShardName]shardsmigrator.Repository)
+	for shardName, dbConnName := range shardsConfig {
+		db, ok := dbs[dbConnName]
+		if !ok {
+			return nil, fmt.Errorf("connection %s not found", dbConnName)
+		}
+		shards[shardName] = postgres.NewProductRepository(db)
+	}
+	return sharding.NewPool(shards, sharding.RendezvousResolver)
 }
