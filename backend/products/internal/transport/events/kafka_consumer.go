@@ -1,4 +1,4 @@
-package kafka
+package events
 
 import (
 	"context"
@@ -13,22 +13,22 @@ import (
 	"github.com/sethvargo/go-retry"
 )
 
-const KafkaProductEventTypeCreated = "created"
+const kafkaProductEventTypeCreated = "created"
 
 type productEventService interface {
 	CreateProduct(ctx context.Context, product *domain.Product) error
 }
 
-type KafkaProductEvent struct {
+type kafkaProductEvent struct {
 	Type string          `json:"type"`
 	Body *domain.Product `json:"product"`
 }
 
-func (e *KafkaProductEvent) Validate() error {
+func (e *kafkaProductEvent) validate() error {
 	if e == nil {
 		return errors.New("event is nil")
 	}
-	if e.Type != KafkaProductEventTypeCreated {
+	if e.Type != kafkaProductEventTypeCreated {
 		return fmt.Errorf("invalid event type: %s", e.Type)
 	}
 	if e.Body == nil {
@@ -77,7 +77,7 @@ func (c *ProductEventConsumer) Run(ctx context.Context) error {
 		}
 		log.Println("message in topic", c.reader.Config().Topic, "received:", string(msg.Value))
 
-		var event KafkaProductEvent
+		var event kafkaProductEvent
 		if err = json.Unmarshal(msg.Value, &event); err != nil {
 			if dlqErr := c.writeToDLQ(ctx, msg, err); dlqErr != nil {
 				return fmt.Errorf("write to DLQ failed: %w", dlqErr)
@@ -85,7 +85,7 @@ func (c *ProductEventConsumer) Run(ctx context.Context) error {
 			c.commitOffset(ctx, msg)
 			continue
 		}
-		if err = event.Validate(); err != nil {
+		if err = event.validate(); err != nil {
 			if dlqErr := c.writeToDLQ(ctx, msg, err); dlqErr != nil {
 				return fmt.Errorf("write to DLQ failed: %w", dlqErr)
 			}
@@ -117,7 +117,7 @@ func (c *ProductEventConsumer) fetchWithRetry(ctx context.Context) (kafka.Messag
 	})
 }
 
-func (c *ProductEventConsumer) processWithRetry(ctx context.Context, event KafkaProductEvent) error {
+func (c *ProductEventConsumer) processWithRetry(ctx context.Context, event kafkaProductEvent) error {
 	return retry.Do(ctx, c.processBackoff, func(ctx context.Context) error {
 		err := c.svc.CreateProduct(ctx, event.Body)
 		if err != nil {

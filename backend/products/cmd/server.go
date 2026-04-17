@@ -6,8 +6,8 @@ import (
 	"log"
 	"products/internal/app"
 	"products/internal/infra/config"
-	"products/internal/infra/messaging/kafka"
 	"products/internal/infra/search/elasticsearch"
+	"products/internal/transport/events"
 	"products/internal/infra/storage/postgres"
 	"products/internal/pkg/sharding"
 	"products/internal/service"
@@ -53,7 +53,7 @@ var serverCmd = &cobra.Command{
 
 		svc := service.NewProductService(repo, store)
 
-		kafkaConsumer := kafka.NewProductEventConsumer(cfg.KafkaBrokers, svc)
+		kafkaConsumer := events.NewProductEventConsumer(cfg.KafkaBrokers, svc)
 		handler := httpapi.NewSearchHandler(svc)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)

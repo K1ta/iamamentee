@@ -3,18 +3,18 @@ package app
 import (
 	"context"
 	"log"
-	"products/internal/infra/messaging/kafka"
+	"products/internal/transport/events"
 	"products/internal/transport/httpapi"
 
 	"golang.org/x/sync/errgroup"
 )
 
 type ServerApp struct {
-	kafkaConsumer *kafka.ProductEventConsumer
+	kafkaConsumer *events.ProductEventConsumer
 	httpServer    *httpapi.Server
 }
 
-func NewServerApp(kafkaConsumer *kafka.ProductEventConsumer, httpServer *httpapi.Server) *ServerApp {
+func NewServerApp(kafkaConsumer *events.ProductEventConsumer, httpServer *httpapi.Server) *ServerApp {
 	return &ServerApp{kafkaConsumer: kafkaConsumer, httpServer: httpServer}
 }
 
