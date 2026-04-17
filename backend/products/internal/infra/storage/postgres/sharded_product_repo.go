@@ -14,50 +14,50 @@ import (
 // ShardedProductRepository реализует domain.ProductRepository.
 // Знает про текущие шарды и опционально про предыдущие (при миграции шардов).
 type ShardedProductRepository struct {
-	shards     map[sharding.ShardName]*ProductRepository
-	prevShards map[sharding.ShardName]*ProductRepository // nil если нет миграции шардов
+	shards     *sharding.Pool[*ProductRepository]
+	prevShards *sharding.Pool[*ProductRepository] // nil если нет миграции шардов
 }
 
 func NewShardedProductRepository(
-	shards map[sharding.ShardName]*ProductRepository,
-	prevShards map[sharding.ShardName]*ProductRepository,
+	shards *sharding.Pool[*ProductRepository],
+	prevShards *sharding.Pool[*ProductRepository],
 ) *ShardedProductRepository {
 	return &ShardedProductRepository{shards: shards, prevShards: prevShards}
 }
 
 func (r *ShardedProductRepository) Create(ctx context.Context, product *domain.Product) error {
-	_, repo := sharding.GetShard(r.shards, strconv.FormatInt(product.ID, 10))
+	repo := r.shards.Get(strconv.FormatInt(product.ID, 10))
 	return repo.Create(ctx, product)
 }
 
 func (r *ShardedProductRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain.Product, error) {
-	products, err := listByIDsFromShards(ctx, r.shards, ids)
+	products, err := listByIDsFromPool(ctx, r.shards, ids)
 	if err != nil {
 		return nil, fmt.Errorf("list from current shards: %w", err)
 	}
 
-	if len(r.prevShards) == 0 || len(products) == len(ids) {
+	if r.prevShards == nil || len(products) == len(ids) {
 		return products, nil
 	}
 
 	absent := absentIDs(ids, products)
 	log.Println("not all ids found, search prev shards for:", absent)
 
-	prevProducts, err := listByIDsFromShards(ctx, r.prevShards, absent)
+	prevProducts, err := listByIDsFromPool(ctx, r.prevShards, absent)
 	if err != nil {
 		return nil, fmt.Errorf("list from prev shards: %w", err)
 	}
 	return append(products, prevProducts...), nil
 }
 
-func listByIDsFromShards(
+func listByIDsFromPool(
 	ctx context.Context,
-	shards map[sharding.ShardName]*ProductRepository,
+	pool *sharding.Pool[*ProductRepository],
 	ids []int64,
 ) ([]domain.Product, error) {
-	shardForIDs := make(map[sharding.ShardName][]int64, len(shards))
+	shardForIDs := make(map[sharding.ShardName][]int64)
 	for _, id := range ids {
-		shardName, _ := sharding.GetShard(shards, strconv.FormatInt(id, 10))
+		shardName := pool.GetName(strconv.FormatInt(id, 10))
 		shardForIDs[shardName] = append(shardForIDs[shardName], id)
 	}
 
@@ -67,7 +67,7 @@ func listByIDsFromShards(
 	for shardName, idsInShard := range shardForIDs {
 		eg.Go(func() error {
 			log.Println("list by ids from shard", shardName, ":", idsInShard)
-			products, err := shards[shardName].ListByIDs(egCtx, idsInShard)
+			products, err := pool.GetByName(shardName).ListByIDs(egCtx, idsInShard)
 			if err != nil {
 				return fmt.Errorf("failed for shard %s: %w", shardName, err)
 			}

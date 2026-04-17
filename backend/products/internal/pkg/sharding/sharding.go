@@ -1,21 +1,51 @@
 package sharding
 
-import "github.com/cespare/xxhash/v2"
+import (
+	"fmt"
+	"maps"
+	"slices"
 
-type ShardName = string
+	"github.com/cespare/xxhash/v2"
+)
 
-func GetShard[V any](shards map[ShardName]V, key string) (ShardName, V) {
-	if len(shards) == 0 {
-		panic("empty shards")
-	}
+type ShardName string
+
+type Resolver func(shardNames []ShardName, key string) ShardName
+
+func RendezvousResolver(shardNames []ShardName, key string) ShardName {
 	maxScore := uint64(0)
-	var shardName ShardName
-	for name := range shards {
+	var res ShardName
+	for _, name := range shardNames {
 		score := xxhash.Sum64String(key + ":" + string(name))
 		if score > maxScore {
 			maxScore = score
-			shardName = name
+			res = name
 		}
 	}
-	return shardName, shards[shardName]
+	return res
+}
+
+type Pool[T any] struct {
+	shards   map[ShardName]T
+	resolver Resolver
+}
+
+func NewPool[T any](shards map[ShardName]T, resolver Resolver) (*Pool[T], error) {
+	if len(shards) == 0 {
+		return nil, fmt.Errorf("empty shards")
+	}
+	return &Pool[T]{shards: shards, resolver: resolver}, nil
+}
+
+func (s *Pool[T]) Get(key string) T {
+	shardName := s.resolver(slices.Collect(maps.Keys(s.shards)), key)
+	return s.shards[shardName]
+}
+
+func (s *Pool[T]) GetByName(name ShardName) T {
+	return s.shards[name]
+}
+
+func (s *Pool[T]) GetName(key string) ShardName {
+	return s.resolver(slices.Collect(maps.Keys(s.shards)), key)
 }

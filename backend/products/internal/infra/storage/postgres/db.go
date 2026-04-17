@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"products/internal/infra/config"
@@ -8,14 +9,15 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func NewDBConnections(dbs map[config.DBConnectionName]config.DSN) (map[config.DBConnectionName]*sql.DB, error) {
-	res := make(map[config.DBConnectionName]*sql.DB, len(dbs))
-	for name, dsn := range dbs {
-		db, err := sql.Open("postgres", string(dsn))
-		if err != nil {
-			return nil, fmt.Errorf("open %s: %w", name, err)
-		}
-		res[name] = db
-	}
-	return res, nil
+func NewDB(cfg *config.PostgresConfig) (*sql.DB, error) {
+	dsn := fmt.Sprintf("postgresql://%s:%s@%s/%s?sslmode=%s",
+		cfg.User, cfg.Password, cfg.Host, cfg.Database, cfg.SSLMode)
+	db, err := sql.Open("postgres", dsn)
+	return db, err
+}
+
+type DBTX interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
