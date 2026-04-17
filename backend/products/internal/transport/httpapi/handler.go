@@ -18,23 +18,16 @@ type searchRequest struct {
 	PriceTo   int64  `in:"query=to"`
 }
 
-// productLister позволяет не зависеть от конкретной реализации хранилища продуктов.
-type productLister interface {
-	ListByIDs(ctx context.Context, ids []int64) ([]domain.Product, error)
-}
-
-// productSearcher позволяет не зависеть от конкретной реализации поискового индекса.
-type productSearcher interface {
-	Search(ctx context.Context, query domain.SearchQuery) ([]int64, error)
+type productService interface {
+	Search(ctx context.Context, query domain.SearchQuery) ([]domain.Product, error)
 }
 
 type SearchHandler struct {
-	repo  productLister
-	store productSearcher
+	svc productService
 }
 
-func NewSearchHandler(repo productLister, store productSearcher) *SearchHandler {
-	return &SearchHandler{repo: repo, store: store}
+func NewSearchHandler(svc productService) *SearchHandler {
+	return &SearchHandler{svc: svc}
 }
 
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
@@ -50,25 +43,13 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("got search request:", req)
 
-	query := domain.SearchQuery{
+	products, err := h.svc.Search(r.Context(), domain.SearchQuery{
 		Name:      req.Name,
 		PriceFrom: req.PriceFrom,
 		PriceTo:   req.PriceTo,
-	}
-
-	productIDs, err := h.store.Search(r.Context(), query)
+	})
 	if err != nil {
-		log.Println("Elastic failed:", err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-	if len(productIDs) == 0 {
-		w.Write([]byte("[]"))
-		return
-	}
-	products, err := h.repo.ListByIDs(r.Context(), productIDs)
-	if err != nil {
-		log.Println("ListByFilter failed:", err)
+		log.Println("search failed:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return
 	}

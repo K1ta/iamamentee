@@ -13,18 +13,10 @@ import (
 	"github.com/sethvargo/go-retry"
 )
 
-const (
-	KafkaProductEventTypeCreated = "created"
-)
+const KafkaProductEventTypeCreated = "created"
 
-// productWriter позволяет не зависеть от конкретной реализации хранилища продуктов.
-type productWriter interface {
-	Create(ctx context.Context, product *domain.Product) error
-}
-
-// productIndexer позволяет не зависеть от конкретной реализации поискового хранилища.
-type productIndexer interface {
-	Index(ctx context.Context, product *domain.Product) error
+type productEventService interface {
+	CreateProduct(ctx context.Context, product *domain.Product) error
 }
 
 type KafkaProductEvent struct {
@@ -46,25 +38,25 @@ func (e *KafkaProductEvent) Validate() error {
 }
 
 type ProductEventConsumer struct {
-	reader        *kafka.Reader
-	fetchBackoff  retry.Backoff
-	commitBackoff retry.Backoff
-	repo          productWriter
-	store         productIndexer
+	reader         *kafka.Reader
+	fetchBackoff   retry.Backoff
+	processBackoff retry.Backoff
+	commitBackoff  retry.Backoff
+	svc            productEventService
 }
 
-func NewProductEventConsumer(brokers []string, repo productWriter, store productIndexer) *ProductEventConsumer {
+func NewProductEventConsumer(brokers []string, svc productEventService) *ProductEventConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: brokers,
 		GroupID: "products.product",
 		Topic:   "product-management.product",
 	})
 	return &ProductEventConsumer{
-		reader:        reader,
-		fetchBackoff:  retry.WithMaxDuration(time.Minute, retry.WithJitterPercent(50, retry.NewExponential(time.Millisecond*100))),
-		commitBackoff: retry.WithMaxRetries(5, retry.NewConstant(time.Millisecond*100)),
-		repo:          repo,
-		store:         store,
+		reader:         reader,
+		fetchBackoff:   retry.WithMaxDuration(time.Minute, retry.WithJitterPercent(50, retry.NewExponential(time.Millisecond*100))),
+		processBackoff: retry.WithMaxRetries(3, retry.WithJitterPercent(20, retry.NewExponential(time.Millisecond*200))),
+		commitBackoff:  retry.WithMaxRetries(5, retry.NewConstant(time.Millisecond*100)),
+		svc:            svc,
 	}
 }
 
@@ -88,27 +80,26 @@ func (c *ProductEventConsumer) Run(ctx context.Context) error {
 		var event KafkaProductEvent
 		if err = json.Unmarshal(msg.Value, &event); err != nil {
 			if dlqErr := c.writeToDLQ(ctx, msg, err); dlqErr != nil {
-				return fmt.Errorf("write to DLQ failed: %w", err)
+				return fmt.Errorf("write to DLQ failed: %w", dlqErr)
 			}
+			c.commitOffset(ctx, msg)
 			continue
 		}
-		if err := event.Validate(); err != nil {
+		if err = event.Validate(); err != nil {
 			if dlqErr := c.writeToDLQ(ctx, msg, err); dlqErr != nil {
-				return fmt.Errorf("write to DLQ failed: %w", err)
+				return fmt.Errorf("write to DLQ failed: %w", dlqErr)
 			}
+			c.commitOffset(ctx, msg)
 			continue
 		}
 
-		if err = c.process(ctx, event); err != nil {
+		if err = c.processWithRetry(ctx, event); err != nil {
 			if dlqErr := c.writeToDLQ(ctx, msg, err); dlqErr != nil {
-				return fmt.Errorf("write to DLQ failed: %w", err)
+				return fmt.Errorf("write to DLQ failed: %w", dlqErr)
 			}
 		}
 
-		if err = c.commitOffsetWithRetry(ctx, msg); err != nil {
-			log.Println("failed to commit message", msg.Partition, msg.Offset, ":", err)
-			continue
-		}
+		c.commitOffset(ctx, msg)
 	}
 }
 
@@ -126,21 +117,30 @@ func (c *ProductEventConsumer) fetchWithRetry(ctx context.Context) (kafka.Messag
 	})
 }
 
-func (c *ProductEventConsumer) process(ctx context.Context, event KafkaProductEvent) error {
-	// todo switch по типу, но пока одно событие
-	if err := c.repo.Create(ctx, event.Body); err != nil {
-		return fmt.Errorf("failed to create product %d: %w", event.Body.ID, err)
-	}
-	if err := c.store.Index(ctx, event.Body); err != nil {
-		return fmt.Errorf("failed to index product %d: %w", event.Body.ID, err)
-	}
-	return nil
+func (c *ProductEventConsumer) processWithRetry(ctx context.Context, event KafkaProductEvent) error {
+	return retry.Do(ctx, c.processBackoff, func(ctx context.Context) error {
+		err := c.svc.CreateProduct(ctx, event.Body)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				return err
+			}
+			log.Println("process failed, retrying:", err)
+			return retry.RetryableError(err)
+		}
+		return nil
+	})
 }
 
 func (c *ProductEventConsumer) writeToDLQ(_ context.Context, msg kafka.Message, reason error) error {
 	log.Println("message sent to DLQ", msg.Partition, msg.Offset, ", reason:", reason)
 	// TODO implement writing to DLQ
 	return nil
+}
+
+func (c *ProductEventConsumer) commitOffset(ctx context.Context, msg kafka.Message) {
+	if err := c.commitOffsetWithRetry(ctx, msg); err != nil {
+		log.Println("failed to commit message", msg.Partition, msg.Offset, ":", err)
+	}
 }
 
 func (c *ProductEventConsumer) commitOffsetWithRetry(ctx context.Context, msg kafka.Message) error {

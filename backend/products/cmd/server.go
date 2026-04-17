@@ -10,6 +10,7 @@ import (
 	"products/internal/infra/search/elasticsearch"
 	"products/internal/infra/storage/postgres"
 	"products/internal/pkg/sharding"
+	"products/internal/service"
 	"products/internal/transport/httpapi"
 	"time"
 
@@ -50,8 +51,10 @@ var serverCmd = &cobra.Command{
 			return fmt.Errorf("new search store: %w", err)
 		}
 
-		kafkaConsumer := kafka.NewProductEventConsumer(cfg.KafkaBrokers, repo, store)
-		handler := httpapi.NewSearchHandler(repo, store)
+		svc := service.NewProductService(repo, store)
+
+		kafkaConsumer := kafka.NewProductEventConsumer(cfg.KafkaBrokers, svc)
+		handler := httpapi.NewSearchHandler(svc)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
