@@ -9,15 +9,15 @@ import (
 	"github.com/lib/pq"
 )
 
-type searchRepository struct {
+type ProductRepository struct {
 	db *sql.DB
 }
 
-func NewSearchRepository(db *sql.DB) *searchRepository {
-	return &searchRepository{db: db}
+func NewProductRepository(db *sql.DB) *ProductRepository {
+	return &ProductRepository{db: db}
 }
 
-func (r *searchRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain.Product, error) {
+func (r *ProductRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain.Product, error) {
 	query := "SELECT id, user_id, name, price FROM products WHERE id=ANY($1)"
 	rows, err := r.db.QueryContext(ctx, query, pq.Array(ids)) // todo pagination
 	if err != nil {
@@ -38,7 +38,7 @@ func (r *searchRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain
 	return res, nil
 }
 
-func (r *searchRepository) Create(ctx context.Context, product *domain.Product) error {
+func (r *ProductRepository) Create(ctx context.Context, product *domain.Product) error {
 	query := "INSERT INTO products (id, user_id, name, price) VALUES ($1, $2, $3, $4) ON CONFLICT (id) " +
 		"DO UPDATE SET name=EXCLUDED.name, price=EXCLUDED.price"
 	_, err := r.db.ExecContext(ctx, query, product.ID, product.UserID, product.Name, product.Price)

@@ -17,13 +17,18 @@ const (
 	KafkaProductEventTypeCreated = "created"
 )
 
+// productWriter позволяет не зависеть от конкретной реализации хранилища продуктов.
+type productWriter interface {
+	Create(ctx context.Context, product *domain.Product) error
+}
+
 // productIndexer позволяет не зависеть от конкретной реализации поискового хранилища.
 type productIndexer interface {
 	Index(ctx context.Context, product *domain.Product) error
 }
 
 type KafkaProductEvent struct {
-	Type string         `json:"type"`
+	Type string          `json:"type"`
 	Body *domain.Product `json:"product"`
 }
 
@@ -44,11 +49,11 @@ type ProductEventConsumer struct {
 	reader        *kafka.Reader
 	fetchBackoff  retry.Backoff
 	commitBackoff retry.Backoff
-	repo          domain.SearchRepository
+	repo          productWriter
 	store         productIndexer
 }
 
-func NewProductEventConsumer(brokers []string, repo domain.SearchRepository, store productIndexer) *ProductEventConsumer {
+func NewProductEventConsumer(brokers []string, repo productWriter, store productIndexer) *ProductEventConsumer {
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: brokers,
 		GroupID: "products.product",

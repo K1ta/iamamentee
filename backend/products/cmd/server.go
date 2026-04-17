@@ -1,10 +1,10 @@
 package cmd
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"products/internal/app"
-	"products/internal/domain"
 	"products/internal/infra/config"
 	"products/internal/infra/messaging/kafka"
 	"products/internal/infra/search/elasticsearch"
@@ -31,35 +31,19 @@ var serverCmd = &cobra.Command{
 			return fmt.Errorf("new db connections: %w", err)
 		}
 
-		repoShards := make(map[sharding.ShardName]domain.SearchRepository)
-		for shardName, dbConnName := range cfg.Shards {
-			db, ok := dbConnections[dbConnName]
-			if !ok {
-				return fmt.Errorf("connection %s for shard %s not found", dbConnName, shardName)
-			}
-			repoShards[shardName] = postgres.NewSearchRepository(db)
-		}
-		shardedRepo, err := postgres.NewShardedSearchRepository(repoShards)
+		shards, err := buildShardRepos(dbConnections, cfg.Shards)
 		if err != nil {
-			return fmt.Errorf("new sharded search repository: %w", err)
+			return fmt.Errorf("build shards: %w", err)
+		}
+		var prevShards map[sharding.ShardName]*postgres.ProductRepository
+		if len(cfg.PrevShards) > 0 {
+			prevShards, err = buildShardRepos(dbConnections, cfg.PrevShards)
+			if err != nil {
+				return fmt.Errorf("build prev shards: %w", err)
+			}
 		}
 
-		var repo domain.SearchRepository = shardedRepo
-		if len(cfg.PrevShards) > 0 {
-			prevRepoShards := make(map[sharding.ShardName]domain.SearchRepository)
-			for shardName, dbConnName := range cfg.PrevShards {
-				db, ok := dbConnections[dbConnName]
-				if !ok {
-					return fmt.Errorf("connection %s for prev shard %s not found", dbConnName, shardName)
-				}
-				prevRepoShards[shardName] = postgres.NewSearchRepository(db)
-			}
-			prevShardsRepo, err := postgres.NewShardedSearchRepository(prevRepoShards)
-			if err != nil {
-				return fmt.Errorf("new sharded search repository for prev shards: %w", err)
-			}
-			repo = postgres.NewMigratingShardedSearchRepository(shardedRepo, prevShardsRepo)
-		}
+		repo := postgres.NewShardedProductRepository(shards, prevShards)
 
 		store, err := elasticsearch.NewSearchStore(cfg.ElasticAddresses)
 		if err != nil {
@@ -73,4 +57,19 @@ var serverCmd = &cobra.Command{
 
 		return app.NewServerApp(kafkaConsumer, server).Run(cmd.Context())
 	},
+}
+
+func buildShardRepos(
+	dbs map[config.DBConnectionName]*sql.DB,
+	shardsConfig map[sharding.ShardName]config.DBConnectionName,
+) (map[sharding.ShardName]*postgres.ProductRepository, error) {
+	shards := make(map[sharding.ShardName]*postgres.ProductRepository, len(shardsConfig))
+	for shardName, dbConnName := range shardsConfig {
+		db, ok := dbs[dbConnName]
+		if !ok {
+			return nil, fmt.Errorf("connection %s for shard %s not found", dbConnName, shardName)
+		}
+		shards[shardName] = postgres.NewProductRepository(db)
+	}
+	return shards, nil
 }

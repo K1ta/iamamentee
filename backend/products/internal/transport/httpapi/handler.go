@@ -18,17 +18,22 @@ type searchRequest struct {
 	PriceTo   int64  `in:"query=to"`
 }
 
-// productSearcher позволяет не зависеть от конкретной реализации поискового хранилища.
+// productLister позволяет не зависеть от конкретной реализации хранилища продуктов.
+type productLister interface {
+	ListByIDs(ctx context.Context, ids []int64) ([]domain.Product, error)
+}
+
+// productSearcher позволяет не зависеть от конкретной реализации поискового индекса.
 type productSearcher interface {
 	Search(ctx context.Context, query domain.SearchQuery) ([]int64, error)
 }
 
 type SearchHandler struct {
-	repo  domain.SearchRepository
+	repo  productLister
 	store productSearcher
 }
 
-func NewSearchHandler(repo domain.SearchRepository, store productSearcher) *SearchHandler {
+func NewSearchHandler(repo productLister, store productSearcher) *SearchHandler {
 	return &SearchHandler{repo: repo, store: store}
 }
 

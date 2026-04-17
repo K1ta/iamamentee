@@ -1,7 +1,5 @@
 package domain
 
-import "context"
-
 type Product struct {
 	ID     int64  `json:"id"`
 	UserID int64  `json:"user_id"`
@@ -13,9 +11,4 @@ type SearchQuery struct {
 	Name      string
 	PriceFrom int64
 	PriceTo   int64
-}
-
-type SearchRepository interface {
-	ListByIDs(ctx context.Context, ids []int64) ([]Product, error)
-	Create(ctx context.Context, product *Product) error
 }
