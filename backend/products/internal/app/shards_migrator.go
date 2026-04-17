@@ -29,13 +29,7 @@ func (a *ShardsMigratorApp) shutdown() {
 	defer cancel()
 
 	wg := &sync.WaitGroup{}
-	for name, db := range a.dbs {
-		wg.Go(func() {
-			if err := db.Close(); err != nil {
-				log.Printf("failed to close %s db: %v", name, err)
-			}
-		})
-	}
+	closeDBs(wg, a.dbs)
 
 	done := make(chan struct{})
 	go func() {

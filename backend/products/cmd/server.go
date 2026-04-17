@@ -59,7 +59,7 @@ var serverCmd = &cobra.Command{
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
-		return app.NewServerApp(kafkaConsumer, server).Run(cmd.Context())
+		return app.NewServerApp(dbs, kafkaConsumer, server).Run(cmd.Context())
 	},
 }
 
