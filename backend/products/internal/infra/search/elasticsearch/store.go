@@ -1,4 +1,4 @@
-package app
+package elasticsearch
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"products/internal/domain"
 	"strconv"
 
 	"github.com/elastic/go-elasticsearch/v9"
@@ -15,7 +16,7 @@ import (
 const productSearchIndex = "products"
 
 type (
-	ElasticErrorResponse struct {
+	elasticErrorResponse struct {
 		Err struct {
 			Type   string `json:"type"`
 			Reason string `json:"reason"`
@@ -23,7 +24,7 @@ type (
 		Status int `json:"status"`
 	}
 
-	ElasticSearchResponse struct {
+	elasticSearchResponse struct {
 		Hits struct {
 			Hits []struct {
 				ID    string  `json:"_id"`
@@ -33,7 +34,7 @@ type (
 	}
 )
 
-func (e ElasticErrorResponse) Error() string {
+func (e elasticErrorResponse) Error() string {
 	return fmt.Sprintf("elasticsearch error %d: (%s) %s", e.Status, e.Err.Type, e.Err.Reason)
 }
 
@@ -52,7 +53,7 @@ func NewSearchStore(addr []string) (*SearchStore, error) {
 	return &SearchStore{client: client}, nil
 }
 
-func (s *SearchStore) Index(ctx context.Context, product *Product) error {
+func (s *SearchStore) Index(ctx context.Context, product *domain.Product) error {
 	productDoc := map[string]any{
 		"name":  product.Name,
 		"price": product.Price,
@@ -74,25 +75,25 @@ func (s *SearchStore) Index(ctx context.Context, product *Product) error {
 	return nil
 }
 
-func (s *SearchStore) Search(ctx context.Context, req *SearchRequest) (IDs []int64, _ error) {
+func (s *SearchStore) Search(ctx context.Context, query domain.SearchQuery) ([]int64, error) {
 	var must []map[string]any
-	if req.Name != "" {
-		must = []map[string]any{{"match": map[string]any{"name": req.Name}}}
+	if query.Name != "" {
+		must = []map[string]any{{"match": map[string]any{"name": query.Name}}}
 	}
 
 	filters := make(map[string]any)
-	if req.PriceFrom > 0 {
-		filters["gte"] = req.PriceFrom
+	if query.PriceFrom > 0 {
+		filters["gte"] = query.PriceFrom
 	}
-	if req.PriceTo > 0 {
-		filters["lte"] = req.PriceTo
+	if query.PriceTo > 0 {
+		filters["lte"] = query.PriceTo
 	}
 	var filter []map[string]any
 	if len(filters) > 0 {
 		filter = []map[string]any{{"range": map[string]any{"price": filters}}}
 	}
 
-	query := map[string]any{
+	esQuery := map[string]any{
 		"_source": false,
 		"query": map[string]any{
 			"bool": map[string]any{
@@ -102,7 +103,7 @@ func (s *SearchStore) Search(ctx context.Context, req *SearchRequest) (IDs []int
 		},
 	}
 
-	body, err := json.Marshal(query)
+	body, err := json.Marshal(esQuery)
 	if err != nil {
 		return nil, fmt.Errorf("marshal query: %w", err)
 	}
@@ -119,14 +120,14 @@ func (s *SearchStore) Search(ctx context.Context, req *SearchRequest) (IDs []int
 	defer res.Body.Close()
 
 	if res.IsError() {
-		var elasticErr ElasticErrorResponse
+		var elasticErr elasticErrorResponse
 		if err := json.NewDecoder(res.Body).Decode(&elasticErr); err == nil {
 			return nil, elasticErr
 		}
 		return nil, errors.New("unknown elasticsearch error")
 	}
 
-	var resp ElasticSearchResponse
+	var resp elasticSearchResponse
 	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("unmarshal response: %w", err)
 	}
