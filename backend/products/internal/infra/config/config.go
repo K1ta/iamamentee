@@ -12,16 +12,24 @@ import (
 type PostgresName = string
 
 type Config struct {
-	Listen           string                                   `env:"APP_LISTEN"`
-	KafkaBrokers     []string                                 `env:"APP_KAFKA_BROKERS"`
-	ElasticAddresses []string                                 `env:"APP_ELASTIC_ADDRESSES"`
-	Shards           map[sharding.ShardName]PostgresName      `env:"APP_SHARDS"`
-	PrevShards       map[sharding.ShardName]PostgresName      `env:"APP_PREV_SHARDS"`
-	Hostname         string                                   `env:"HOSTNAME"` // k8s env
+	Listen           string                              `env:"APP_LISTEN"`
+	KafkaBrokers     []string                            `env:"APP_KAFKA_BROKERS"`
+	ElasticAddresses []string                            `env:"APP_ELASTIC_ADDRESSES"`
+	Shards           map[sharding.ShardName]PostgresName `env:"APP_SHARDS"`
+	PrevShards       map[sharding.ShardName]PostgresName `env:"APP_PREV_SHARDS"`
+	Hostname         string                              `env:"HOSTNAME"` // k8s env
+
+	ShardsMigratorConfig ShardsMigratorConfig
 
 	// Динамический конфиг, заполняется вручную. Формат - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig].
 	PostgresDatabases map[PostgresName]PostgresConfig
+}
+
+type ShardsMigratorConfig struct {
+	PrevShardsStartFrom map[sharding.ShardName]int64 `env:"APP_SHARDSMIGRATOR_PREV_SHARDS_START_FROM"`
+	ExcludedPrevShards  []sharding.ShardName         `env:"APP_SHARDSMIGRATOR_EXCLUDED_PREV_SHARDS"`
+	BatchLimit          int                          `env:"APP_SHARDSMIGRATOR_BATCH_LIMIT"`
 }
 
 type PostgresConfig struct {

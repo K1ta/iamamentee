@@ -17,6 +17,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(serverCmd)
+	rootCmd.AddCommand(shardsRootCmd)
 }
 
 func Run(ctx context.Context) error {
