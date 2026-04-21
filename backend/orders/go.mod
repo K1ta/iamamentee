@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/caarlos0/env/v11 v11.4.0
 	github.com/go-chi/chi/v5 v5.2.5
+	github.com/lib/pq v1.12.3
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sync v0.20.0
 )

@@ -29,10 +29,7 @@ type Order struct {
 	Items  []Item
 }
 
-func NewOrder(id int64, userID int64, items []Item) (*Order, error) {
-	if id <= 0 {
-		return nil, errors.New("invalid id")
-	}
+func NewOrder(userID int64, items []Item) (*Order, error) {
 	if userID <= 0 {
 		return nil, errors.New("invalid user id")
 	}
@@ -40,11 +37,41 @@ func NewOrder(id int64, userID int64, items []Item) (*Order, error) {
 		return nil, errors.New("items are empty")
 	}
 	return &Order{
-		ID:     id,
 		UserID: userID,
 		Status: StatusCreated,
 		Items:  items,
 	}, nil
+}
+
+// RestoreOrder восстанавливает Order из хранилища.
+// Валидирует поля, чтобы гарантировать инварианты агрегата при чтении.
+func RestoreOrder(id, userID int64, status Status, items []Item) (*Order, error) {
+	if id <= 0 {
+		return nil, errors.New("invalid id")
+	}
+	if userID <= 0 {
+		return nil, errors.New("invalid user id")
+	}
+	if !isValidStatus(status) {
+		return nil, fmt.Errorf("unknown status: %s", status)
+	}
+	if len(items) == 0 {
+		return nil, errors.New("items are empty")
+	}
+	return &Order{
+		ID:     id,
+		UserID: userID,
+		Status: status,
+		Items:  items,
+	}, nil
+}
+
+func isValidStatus(s Status) bool {
+	switch s {
+	case StatusCreated, StatusConfirmed, StatusProcessing, StatusCompleted, StatusCanceled, StatusFailed:
+		return true
+	}
+	return false
 }
 
 // Confirm фиксирует цены продуктов в заказе.
