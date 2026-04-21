@@ -25,4 +25,16 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: orders
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: orders-infra
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: kafka-common
