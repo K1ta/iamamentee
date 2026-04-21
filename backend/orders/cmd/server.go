@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"log"
 	"orders/internal/app"
+	"orders/internal/infra/client/productmanagement"
+	"orders/internal/infra/client/storage"
 	"orders/internal/infra/config"
+	"orders/internal/infra/storage/postgres"
+	"orders/internal/service"
 	"orders/internal/transport/httpapi"
 	"time"
 
@@ -21,7 +25,25 @@ var serverCmd = &cobra.Command{
 		}
 		log.SetPrefix(cfg.LogToken + " ")
 
-		orderHandler := httpapi.NewOrderHandler()
+		pgCfg, ok := cfg.PostgresDatabases["PG"]
+		if !ok {
+			return fmt.Errorf("postgres config 'PG' not found")
+		}
+		db, err := postgres.NewDB(&pgCfg)
+		if err != nil {
+			return fmt.Errorf("open postgres: %w", err)
+		}
+		defer db.Close()
+
+		repo := postgres.NewOrderRepository(db)
+		pmClient := productmanagement.NewClient(cfg.ProductManagementURL)
+		storClient := storage.NewClient(cfg.StorageURL)
+
+		orderService := service.NewOrderService(repo, pmClient, storClient, service.AttemptsConfig{
+			Created:   cfg.MaxAttemptsCreated,
+			Confirmed: cfg.MaxAttemptsConfirmed,
+		})
+		orderHandler := httpapi.NewOrderHandler(orderService)
 		router := httpapi.NewRouter(orderHandler)
 
 		serverApp := app.NewServerApp(httpapi.NewServer(cfg.Listen, router, time.Second*5))
