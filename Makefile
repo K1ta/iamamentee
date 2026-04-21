@@ -1,6 +1,6 @@
 .SILENT:
 
-SERVICES := product-management products
+SERVICES := product-management products orders
 
 LOCAL_PORT=9999
 DB_PORT=5432
