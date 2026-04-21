@@ -95,20 +95,27 @@ func (r *OrderRepository) UpdateStatusAndSetPrices(ctx context.Context, order *d
 	return tx.Commit()
 }
 
-// GetOneForProcessing выбирает один заказ в переданном статусе, готовый к обработке
-// (next_attempt_after <= now(), attempts < max_attempts).
-// Использует SELECT FOR UPDATE SKIP LOCKED для безопасной конкурентной обработки воркерами.
-func (r *OrderRepository) GetOneForProcessing(ctx context.Context, status domain.Status) (*domain.Order, error) {
+// GetOneForProcessing атомарно выбирает один заказ в переданном статусе,
+// готовый к обработке, и инкрементирует attempts.
+// intervalSec задаёт, на сколько секунд сдвинуть next_attempt_after.
+// max_attempts = -1 означает неограниченное количество попыток.
+func (r *OrderRepository) GetOneForProcessing(ctx context.Context, status domain.Status, intervalSec int) (*domain.Order, error) {
 	const query = `
-		SELECT id, user_id
-		FROM orders
-		WHERE status = $1
-		  AND next_attempt_after <= now()
-		  AND attempts < max_attempts
-		ORDER BY next_attempt_after
-		LIMIT 1
-		FOR UPDATE SKIP LOCKED`
-	row := r.db.QueryRowContext(ctx, query, status)
+		WITH locked AS (
+			SELECT id FROM orders
+			WHERE status = $1
+			  AND (attempts < max_attempts OR max_attempts = -1)
+			  AND next_attempt_after <= now()
+			ORDER BY next_attempt_after
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE orders
+		SET attempts = attempts + 1,
+		    next_attempt_after = now() + ($2 * interval '1 second')
+		WHERE id IN (SELECT id FROM locked)
+		RETURNING id, user_id`
+	row := r.db.QueryRowContext(ctx, query, status, intervalSec)
 	var (
 		id     int64
 		userID int64
