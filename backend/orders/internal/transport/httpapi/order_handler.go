@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"orders/internal/domain"
@@ -109,6 +110,11 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	order, err := h.service.GetByID(r.Context(), orderID)
+	if errors.Is(err, domain.ErrOrderNotFound) {
+		log.Println("order not found")
+		http.Error(w, "order not found", http.StatusNotFound)
+		return
+	}
 	if err != nil {
 		log.Println("failed to get order:", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)

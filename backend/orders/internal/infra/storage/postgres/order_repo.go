@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"orders/internal/domain"
 
@@ -58,6 +59,9 @@ func (r *OrderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 		status domain.Status
 	)
 	if err := row.Scan(&userID, &status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrOrderNotFound
+		}
 		return nil, fmt.Errorf("scan order: %w", err)
 	}
 
