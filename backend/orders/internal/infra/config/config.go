@@ -19,6 +19,7 @@ type Config struct {
 	MaxAttemptsConfirmed int `env:"APP_MAX_ATTEMPTS_CONFIRMED"`
 	IntervalSecCreated   int `env:"APP_INTERVAL_SEC_CREATED"`
 	IntervalSecConfirmed int `env:"APP_INTERVAL_SEC_CONFIRMED"`
+	WorkerPollIntervalMs int `env:"APP_WORKER_POLL_INTERVAL_MS"`
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
