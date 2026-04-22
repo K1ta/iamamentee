@@ -15,8 +15,10 @@ type Config struct {
 	LogToken             string `env:"APP_LOG_TOKEN"`
 	ProductManagementURL string `env:"APP_PRODUCT_MANAGEMENT_URL"`
 	StorageURL           string `env:"APP_STORAGE_URL"`
-	MaxAttemptsCreated   int    `env:"APP_MAX_ATTEMPTS_CREATED"`
-	MaxAttemptsConfirmed int    `env:"APP_MAX_ATTEMPTS_CONFIRMED"`
+	MaxAttemptsCreated   int `env:"APP_MAX_ATTEMPTS_CREATED"`
+	MaxAttemptsConfirmed int `env:"APP_MAX_ATTEMPTS_CONFIRMED"`
+	IntervalSecCreated   int `env:"APP_INTERVAL_SEC_CREATED"`
+	IntervalSecConfirmed int `env:"APP_INTERVAL_SEC_CONFIRMED"`
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]

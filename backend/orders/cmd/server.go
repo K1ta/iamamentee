@@ -39,9 +39,9 @@ var serverCmd = &cobra.Command{
 		pmClient := productmanagement.NewClient(cfg.ProductManagementURL)
 		storClient := storage.NewClient(cfg.StorageURL)
 
-		orderService := service.NewOrderService(repo, pmClient, storClient, service.AttemptsConfig{
-			Created:   cfg.MaxAttemptsCreated,
-			Confirmed: cfg.MaxAttemptsConfirmed,
+		orderService := service.NewOrderService(repo, pmClient, storClient, service.ProcessingConfig{
+			Created:   service.StatusConfig{MaxAttempts: cfg.MaxAttemptsCreated, IntervalSec: cfg.IntervalSecCreated},
+			Confirmed: service.StatusConfig{MaxAttempts: cfg.MaxAttemptsConfirmed, IntervalSec: cfg.IntervalSecConfirmed},
 		})
 		orderHandler := httpapi.NewOrderHandler(orderService)
 		router := httpapi.NewRouter(orderHandler)

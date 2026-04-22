@@ -104,6 +104,12 @@ func (r *OrderRepository) UpdateStatusAndSetPrices(ctx context.Context, order *d
 // intervalSec задаёт, на сколько секунд сдвинуть next_attempt_after.
 // max_attempts = -1 означает неограниченное количество попыток.
 func (r *OrderRepository) GetOneForProcessing(ctx context.Context, status domain.Status, intervalSec int) (*domain.Order, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
 	const query = `
 		WITH locked AS (
 			SELECT id FROM orders
@@ -119,46 +125,73 @@ func (r *OrderRepository) GetOneForProcessing(ctx context.Context, status domain
 		    next_attempt_after = now() + ($2 * interval '1 second')
 		WHERE id IN (SELECT id FROM locked)
 		RETURNING id, user_id`
-	row := r.db.QueryRowContext(ctx, query, status, intervalSec)
+	row := tx.QueryRowContext(ctx, query, status, intervalSec)
 	var (
 		id     int64
 		userID int64
 	)
 	if err := row.Scan(&id, &userID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNoOrderToProcess
+		}
 		return nil, fmt.Errorf("scan order: %w", err)
 	}
 
-	items, err := getItems(ctx, r.db, id)
+	items, err := getItems(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
-	return domain.RestoreOrder(id, userID, status, items)
+
+	order, err := domain.RestoreOrder(id, userID, status, items)
+	if err != nil {
+		return nil, fmt.Errorf("restore order: %w", err)
+	}
+	return order, tx.Commit()
 }
 
-// GetOneExceededAttempts выбирает один заказ в переданном статусе,
+// GetOneExceededAttempts выбирает один заказ в одном из переданных статусов,
 // у которого исчерпаны попытки обработки (attempts >= max_attempts).
-func (r *OrderRepository) GetOneExceededAttempts(ctx context.Context, status domain.Status) (*domain.Order, error) {
+func (r *OrderRepository) GetOneExceededAttempts(ctx context.Context, statuses ...domain.Status) (*domain.Order, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	statusStrs := make([]string, len(statuses))
+	for i, s := range statuses {
+		statusStrs[i] = string(s)
+	}
 	const query = `
-		SELECT id, user_id
+		SELECT id, user_id, status
 		FROM orders
-		WHERE status = $1
+		WHERE status = ANY($1)
 		  AND attempts >= max_attempts
 		  AND max_attempts != -1
 		LIMIT 1`
-	row := r.db.QueryRowContext(ctx, query, status)
+	row := tx.QueryRowContext(ctx, query, pq.Array(statusStrs))
 	var (
 		id     int64
 		userID int64
+		status domain.Status
 	)
-	if err := row.Scan(&id, &userID); err != nil {
+	if err := row.Scan(&id, &userID, &status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNoOrderToProcess
+		}
 		return nil, fmt.Errorf("scan order: %w", err)
 	}
 
-	items, err := getItems(ctx, r.db, id)
+	items, err := getItems(ctx, tx, id)
 	if err != nil {
 		return nil, err
 	}
-	return domain.RestoreOrder(id, userID, status, items)
+
+	order, err := domain.RestoreOrder(id, userID, status, items)
+	if err != nil {
+		return nil, fmt.Errorf("restore order: %w", err)
+	}
+	return order, tx.Commit()
 }
 
 func updateStatus(ctx context.Context, db DBTX, order *domain.Order, prevStatus domain.Status, maxAttempts int) error {
