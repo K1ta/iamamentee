@@ -149,10 +149,15 @@ func (r *OrderRepository) GetOneForProcessing(ctx context.Context, status domain
 	return order, tx.Commit()
 }
 
-// GetOneExceededAttempts выбирает один заказ в одном из переданных статусов,
-// у которого исчерпаны попытки обработки (attempts >= max_attempts).
+// failClaimIntervalSec — на сколько секунд сдвигается next_attempt_after при захвате
+// заказа под фейл. Предотвращает двойную обработку, не является бизнес-параметром.
+const failClaimIntervalSec = 600
+
+// GetOneExceededAttempts атомарно выбирает один заказ в одном из переданных статусов,
+// у которого исчерпаны попытки обработки (attempts >= max_attempts),
+// и сдвигает next_attempt_after, чтобы другой воркер не захватил тот же заказ.
 func (r *OrderRepository) GetOneExceededAttempts(ctx context.Context, statuses ...domain.Status) (*domain.Order, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
@@ -163,13 +168,20 @@ func (r *OrderRepository) GetOneExceededAttempts(ctx context.Context, statuses .
 		statusStrs[i] = string(s)
 	}
 	const query = `
-		SELECT id, user_id, status
-		FROM orders
-		WHERE status = ANY($1)
-		  AND attempts >= max_attempts
-		  AND max_attempts != -1
-		LIMIT 1`
-	row := tx.QueryRowContext(ctx, query, pq.Array(statusStrs))
+		WITH locked AS (
+			SELECT id FROM orders
+			WHERE status = ANY($1)
+			  AND attempts >= max_attempts
+			  AND max_attempts != -1
+			  AND next_attempt_after <= now()
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE orders
+		SET next_attempt_after = now() + ($2 * interval '1 second')
+		WHERE id IN (SELECT id FROM locked)
+		RETURNING id, user_id, status`
+	row := tx.QueryRowContext(ctx, query, pq.Array(statusStrs), failClaimIntervalSec)
 	var (
 		id     int64
 		userID int64
