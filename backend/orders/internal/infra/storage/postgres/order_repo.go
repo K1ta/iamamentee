@@ -143,6 +143,7 @@ func (r *OrderRepository) GetOneExceededAttempts(ctx context.Context, status dom
 		FROM orders
 		WHERE status = $1
 		  AND attempts >= max_attempts
+		  AND max_attempts != -1
 		LIMIT 1`
 	row := r.db.QueryRowContext(ctx, query, status)
 	var (
