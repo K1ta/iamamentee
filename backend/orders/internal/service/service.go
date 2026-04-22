@@ -9,8 +9,8 @@ import (
 type OrderRepository interface {
 	Create(ctx context.Context, order *domain.Order, maxAttempts int) error
 	GetByID(ctx context.Context, id int64) (*domain.Order, error)
-	UpdateStatus(ctx context.Context, order *domain.Order, maxAttempts int) error
-	UpdateStatusAndSetPrices(ctx context.Context, order *domain.Order, maxAttempts int) error
+	UpdateStatus(ctx context.Context, order *domain.Order, prevStatus domain.Status, maxAttempts int) error
+	UpdateStatusAndSetPrices(ctx context.Context, order *domain.Order, prevStatus domain.Status, maxAttempts int) error
 }
 
 type ProductManagementClient interface {
@@ -78,6 +78,7 @@ func (s *OrderService) Confirm(ctx context.Context, orderID int64) error {
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
+	prevOrderStatus := order.Status
 
 	productIDs := make([]int64, len(order.Items))
 	for i, item := range order.Items {
@@ -93,7 +94,7 @@ func (s *OrderService) Confirm(ctx context.Context, orderID int64) error {
 		return fmt.Errorf("confirm order: %w", err)
 	}
 
-	if err := s.repo.UpdateStatusAndSetPrices(ctx, order, s.maxAttemptsByStatus(order.Status)); err != nil {
+	if err := s.repo.UpdateStatusAndSetPrices(ctx, order, prevOrderStatus, s.maxAttemptsByStatus(order.Status)); err != nil {
 		return fmt.Errorf("update status and prices: %w", err)
 	}
 	return nil
@@ -104,6 +105,7 @@ func (s *OrderService) StartProcessing(ctx context.Context, orderID int64) error
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
+	prevOrderStatus := order.Status
 
 	if err := order.SetProcessing(); err != nil {
 		return fmt.Errorf("set processing: %w", err)
@@ -113,7 +115,7 @@ func (s *OrderService) StartProcessing(ctx context.Context, orderID int64) error
 		return fmt.Errorf("create reservation: %w", err)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, order, s.maxAttemptsByStatus(order.Status)); err != nil {
+	if err := s.repo.UpdateStatus(ctx, order, prevOrderStatus, s.maxAttemptsByStatus(order.Status)); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
@@ -124,12 +126,13 @@ func (s *OrderService) Complete(ctx context.Context, orderID int64) error {
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
+	prevOrderStatus := order.Status
 
 	if err := order.SetCompleted(); err != nil {
 		return fmt.Errorf("set completed: %w", err)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, order, s.maxAttemptsByStatus(order.Status)); err != nil {
+	if err := s.repo.UpdateStatus(ctx, order, prevOrderStatus, s.maxAttemptsByStatus(order.Status)); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
@@ -140,12 +143,13 @@ func (s *OrderService) Cancel(ctx context.Context, orderID int64) error {
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
+	prevOrderStatus := order.Status
 
 	if err := order.SetCanceled(); err != nil {
 		return fmt.Errorf("set canceled: %w", err)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, order, s.maxAttemptsByStatus(order.Status)); err != nil {
+	if err := s.repo.UpdateStatus(ctx, order, prevOrderStatus, s.maxAttemptsByStatus(order.Status)); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
@@ -156,12 +160,13 @@ func (s *OrderService) Fail(ctx context.Context, orderID int64) error {
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
+	prevOrderStatus := order.Status
 
 	if err := order.SetFailed(); err != nil {
 		return fmt.Errorf("set failed: %w", err)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, order, s.maxAttemptsByStatus(order.Status)); err != nil {
+	if err := s.repo.UpdateStatus(ctx, order, prevOrderStatus, s.maxAttemptsByStatus(order.Status)); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil

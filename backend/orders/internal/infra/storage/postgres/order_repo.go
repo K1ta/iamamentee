@@ -78,19 +78,19 @@ func (r *OrderRepository) GetByID(ctx context.Context, id int64) (*domain.Order,
 }
 
 // UpdateStatus обновляет статус заказа и сбрасывает счётчик попыток.
-func (r *OrderRepository) UpdateStatus(ctx context.Context, order *domain.Order, maxAttempts int) error {
-	return updateStatus(ctx, r.db, order, maxAttempts)
+func (r *OrderRepository) UpdateStatus(ctx context.Context, order *domain.Order, prevStatus domain.Status, maxAttempts int) error {
+	return updateStatus(ctx, r.db, order, prevStatus, maxAttempts)
 }
 
 // UpdateStatusAndSetPrices обновляет статус и фиксирует цены в items в одной транзакции.
-func (r *OrderRepository) UpdateStatusAndSetPrices(ctx context.Context, order *domain.Order, maxAttempts int) error {
+func (r *OrderRepository) UpdateStatusAndSetPrices(ctx context.Context, order *domain.Order, prevStatus domain.Status, maxAttempts int) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
-	if err := updateStatus(ctx, tx, order, maxAttempts); err != nil {
+	if err := updateStatus(ctx, tx, order, prevStatus, maxAttempts); err != nil {
 		return err
 	}
 	if err := setPrices(ctx, tx, order); err != nil {
@@ -160,13 +160,23 @@ func (r *OrderRepository) GetOneExceededAttempts(ctx context.Context, status dom
 	return domain.RestoreOrder(id, userID, status, items)
 }
 
-func updateStatus(ctx context.Context, db DBTX, order *domain.Order, maxAttempts int) error {
+func updateStatus(ctx context.Context, db DBTX, order *domain.Order, prevStatus domain.Status, maxAttempts int) error {
 	const query = `
 		UPDATE orders
 		SET status = $1, attempts = 0, max_attempts = $2, next_attempt_after = now()
-		WHERE id = $3`
-	_, err := db.ExecContext(ctx, query, order.Status, maxAttempts, order.ID)
-	return err
+		WHERE id = $3 AND status = $4`
+	res, err := db.ExecContext(ctx, query, order.Status, maxAttempts, order.ID, prevStatus)
+	if err != nil {
+		return fmt.Errorf("exec: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("get rows affected: %w", err)
+	}
+	if n == 0 {
+		return domain.ErrOrderConflict
+	}
+	return nil
 }
 
 func setPrices(ctx context.Context, db DBTX, order *domain.Order) error {
