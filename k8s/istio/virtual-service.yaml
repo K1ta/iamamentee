@@ -24,3 +24,11 @@ spec:
             host: product-management.product-management.svc.cluster.local
             port:
               number: 80
+    - match:
+        - uri:
+            prefix: /orders
+      route:
+        - destination:
+            host: orders.orders.svc.cluster.local
+            port:
+              number: 80

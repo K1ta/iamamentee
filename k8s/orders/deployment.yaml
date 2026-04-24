@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: orders
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+        - name: orders
+          image: docker.io/library/orders:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: orders-config
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-worker
+  namespace: orders
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders-worker
+  template:
+    metadata:
+      labels:
+        app: orders-worker
+    spec:
+      containers:
+        - name: orders-worker
+          image: docker.io/library/orders:latest
+          command: ["./orders", "worker"]
+          imagePullPolicy: Never
+          envFrom:
+            - configMapRef:
+                name: orders-config
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
