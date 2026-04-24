@@ -19,9 +19,6 @@ func NewWorkerApp(worker *workers.OrderWorker) *WorkerApp {
 func (a *WorkerApp) Run(ctx context.Context) error {
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		return a.worker.RunConfirmOrders(egCtx)
-	})
-	eg.Go(func() error {
 		return a.worker.RunStartOrders(egCtx)
 	})
 	eg.Go(func() error {

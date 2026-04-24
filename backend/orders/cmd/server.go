@@ -5,7 +5,6 @@ import (
 	"log"
 	"orders/internal/app"
 	"orders/internal/infra/client/productmanagement"
-	"orders/internal/infra/client/storage"
 	"orders/internal/infra/config"
 	"orders/internal/infra/storage/postgres"
 	"orders/internal/service"
@@ -37,11 +36,9 @@ var serverCmd = &cobra.Command{
 
 		repo := postgres.NewOrderRepository(db)
 		pmClient := productmanagement.NewClient(cfg.ProductManagementURL)
-		storClient := storage.NewClient(cfg.StorageURL)
 
-		orderService := service.NewOrderService(repo, pmClient, storClient, service.ProcessingConfig{
-			Created:   service.StatusConfig{MaxAttempts: cfg.MaxAttemptsCreated, IntervalSec: cfg.IntervalSecCreated},
-			Confirmed: service.StatusConfig{MaxAttempts: cfg.MaxAttemptsConfirmed, IntervalSec: cfg.IntervalSecConfirmed},
+		orderService := service.NewOrderService(repo, pmClient, service.ProcessingConfig{
+			Created: service.StatusConfig{MaxAttempts: cfg.MaxAttemptsCreated, IntervalSec: cfg.IntervalSecCreated},
 		})
 		orderHandler := httpapi.NewOrderHandler(orderService)
 		router := httpapi.NewRouter(orderHandler)

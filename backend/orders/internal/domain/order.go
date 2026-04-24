@@ -9,7 +9,6 @@ type Status string
 
 const (
 	StatusCreated    Status = "created"
-	StatusConfirmed  Status = "confirmed"
 	StatusProcessing Status = "processing"
 	StatusCompleted  Status = "completed"
 	StatusCanceled   Status = "canceled"
@@ -68,45 +67,24 @@ func RestoreOrder(id, userID int64, status Status, items []Item) (*Order, error)
 
 func isValidStatus(s Status) bool {
 	switch s {
-	case StatusCreated, StatusConfirmed, StatusProcessing, StatusCompleted, StatusCanceled, StatusFailed:
+	case StatusCreated, StatusProcessing, StatusCompleted, StatusCanceled, StatusFailed:
 		return true
 	}
 	return false
 }
 
-// Confirm фиксирует цены продуктов в заказе.
-// prices - маппинг product_id -> price.
-// Возвращает ошибку, если есть продукт без цены или цена для продукта, которого нет в заказе.
-func (o *Order) Confirm(prices map[int64]int64) error {
+// SetProcessing резервирует товары и переводит заказ в статус processing.
+// prices — маппинг product_id -> price, полученный от product-management при резервации.
+func (o *Order) SetProcessing(prices map[int64]int64) error {
 	if o.Status != StatusCreated {
-		return fmt.Errorf("cannot confirm order in status %s", o.Status)
+		return fmt.Errorf("cannot set processing from status %s", o.Status)
 	}
-
-	itemIDs := make(map[int64]struct{}, len(o.Items))
-	for _, item := range o.Items {
-		itemIDs[item.ProductID] = struct{}{}
-	}
-	for productID := range prices {
-		if _, ok := itemIDs[productID]; !ok {
-			return fmt.Errorf("price provided for unknown product %d", productID)
-		}
-	}
-
 	for i, item := range o.Items {
 		price, ok := prices[item.ProductID]
 		if !ok {
 			return fmt.Errorf("price for product %d not found", item.ProductID)
 		}
 		o.Items[i].Price = price
-	}
-
-	o.Status = StatusConfirmed
-	return nil
-}
-
-func (o *Order) SetProcessing() error {
-	if o.Status != StatusConfirmed {
-		return fmt.Errorf("cannot set processing from status %s", o.Status)
 	}
 	o.Status = StatusProcessing
 	return nil
@@ -129,7 +107,7 @@ func (o *Order) SetCompleted() error {
 }
 
 func (o *Order) SetFailed() error {
-	if o.Status != StatusCreated && o.Status != StatusConfirmed {
+	if o.Status != StatusCreated {
 		return fmt.Errorf("cannot fail from status %s", o.Status)
 	}
 	o.Status = StatusFailed
