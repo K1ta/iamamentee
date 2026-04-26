@@ -22,29 +22,64 @@ deploy-%:
 	fi
 	kubectl rollout restart deployment $* -n $*
 
+.PHONY: migrate-up-%
 migrate-up-%:
-	pods="$(shell kubectl get pods -n $*-infra -l app=postgres -o jsonpath='{.items[*].metadata.name}')"; \
-	echo $$pods; \
-	for pod in $$pods; do \
-		echo "Migrating up $$pod"; \
-		kubectl port-forward $$pod -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+	make migrate-main-up-$*
+	make migrate-shards-up-$*
+
+migrate-shards-up-%:
+	if [ -d backend/$*/migrations/sharded ] && [ -n "$$(ls -A backend/$*/migrations/sharded)" ]; then \
+        echo "Running sharded migrations..."; \
+		pods="$(shell kubectl get pods -n $*-infra -l app=postgres -o jsonpath='{.items[*].metadata.name}')"; \
+		echo $$pods; \
+		for pod in $$pods; do \
+			echo "Migrating up $$pod"; \
+			kubectl port-forward $$pod -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+			echo PID=$$PF_PID; \
+			sleep 1; \
+			goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" up -dir backend/$*/migrations/sharded; \
+			kill $$PF_PID; \
+		done; \
+    fi
+
+migrate-main-up-%:
+	if [ -d backend/$*/migrations/main ] && [ -n "$$(ls -A backend/$*/migrations/main)" ]; then \
+        echo "Running main migrations..."; \
+		kubectl port-forward postgres-0 -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
 		echo PID=$$PF_PID; \
 		sleep 1; \
-		goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" up -dir backend/$*/migrations; \
+		goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" up -dir backend/$*/migrations/main; \
 		kill $$PF_PID; \
-	done
+    fi
 
 migrate-down-%:
-	pods="$(shell kubectl get pods -n $*-infra -l app=postgres -o jsonpath='{.items[*].metadata.name}')"; \
-	echo $$pods; \
-	for pod in $$pods; do \
-		echo "Migrating down $$pod"; \
-		kubectl port-forward $$pod -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+	make migrate-main-down-$*
+	make migrate-shards-down-$*
+
+migrate-shards-down-%:
+	if [ -d backend/$*/migrations/sharded ] && [ -n "$$(ls -A backend/$*/migrations/sharded)" ]; then \
+        echo "Running sharded migrations..."; \
+		pods="$(shell kubectl get pods -n $*-infra -l app=postgres -o jsonpath='{.items[*].metadata.name}')"; \
+		echo $$pods; \
+		for pod in $$pods; do \
+			echo "Migrating down $$pod"; \
+			kubectl port-forward $$pod -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
+			echo PID=$$PF_PID; \
+			sleep 1; \
+			goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" down -dir backend/$*/migrations/sharded; \
+			kill $$PF_PID; \
+		done; \
+    fi
+
+migrate-main-down-%:
+	if [ -d backend/$*/migrations/main ] && [ -n "$$(ls -A backend/$*/migrations/main)" ]; then \
+        echo "Running main migrations..."; \
+		kubectl port-forward postgres-0 -n $*-infra $(LOCAL_PORT):$(DB_PORT) & PF_PID=$$!; \
 		echo PID=$$PF_PID; \
 		sleep 1; \
-		goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" down -dir backend/$*/migrations; \
+		goose postgres "postgres://$(PG_USER):$(PG_PASSWORD)@localhost:$(LOCAL_PORT)/$*?sslmode=disable" down -dir backend/$*/migrations/main; \
 		kill $$PF_PID; \
-	done
+    fi
 
 .PHONY: release release-%
 release-%:
