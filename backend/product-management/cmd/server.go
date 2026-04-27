@@ -11,6 +11,7 @@ import (
 	"product-management/internal/pkg/snowflake"
 	"product-management/internal/service"
 	"product-management/internal/transport/httpapi"
+	ordersworker "product-management/internal/workers/orders"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -56,12 +57,16 @@ var serverCmd = &cobra.Command{
 		productHandler := httpapi.NewProductHandler(productService)
 
 		orderRepo := postgres.NewOrderRepository(mainDB)
-		orderService := service.NewOrderService(orderRepo)
+		orderService := service.NewOrderService(orderRepo, service.OrderConfig{
+			MaxAttempts: cfg.ReservationWorkerConfig.MaxAttempts,
+			IntervalSec: cfg.ReservationWorkerConfig.IntervalSec,
+		})
 		reservationHandler := httpapi.NewReservationHandler(orderService)
+		reservationWorker := ordersworker.NewReservationWorker(orderService, cfg.ReservationWorkerConfig.PauseWhenNoWork)
 
 		router := httpapi.NewRouter(productHandler, reservationHandler)
 
-		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5))
+		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker)
 		return app.Run(cmd.Context())
 	},
 }

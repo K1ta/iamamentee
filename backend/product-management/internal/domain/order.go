@@ -1,6 +1,11 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
+
+var ErrNoOrderForReservation = errors.New("no order for reservation")
 
 type OrderStatus string
 
@@ -28,4 +33,12 @@ func NewOrder(id int64) (*Order, error) {
 		ID:     id,
 		Status: OrderStatusCreated,
 	}, nil
+}
+
+func (o *Order) SetReserved() error {
+	if o.Status != OrderStatusCreated {
+		return fmt.Errorf("cannot set reserved from status %s", o.Status)
+	}
+	o.Status = OrderStatusReserved
+	return nil
 }
