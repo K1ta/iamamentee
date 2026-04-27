@@ -75,19 +75,22 @@ processing -> canceled: запускается по запросу, перево
 
 - рефакторинг orders: добавить синхронный запрос в product-management за ценами до создания саги. Убрать лишние шаги саги
 - рефакторинг product-management, чтобы он был вторым шагом саги. Добавление стока товаров, возможности резерваций
+- реализация сервиса payments с happy path
 
 ## In progress
 
-- реализация сервиса payments
+- реализация сервиса delivery
 
 ## Planned
 
 - реализация саги order. Сервисы: orders (готов) -> product-management (нужен рефакторинг) -> 
-payments (не реализован) -> delivery (не реализован)
+payments (нужны доработки) -> delivery (в процессе)
 - доделать product-management: сделать переход в failing статус при attempts>max_attempts, сделать отмену шага саги
 - поправить конфиг для воркеров в product-management - сейчас слишком общие названия, непонятно, для какого
 шага задается max_attempts и interval для обработки
 - вынести в product-management воркеров в отдельный cmd с отдельным деплойментом
+- доделать payments: сейчас готов только happy path, нужно еще обрабатывать cancel request и отправлять 
+cancel запрос в product-management из статуса failing 
 - перевести сагу на кафку (или сделать новую), чтобы сравнить, чем она отличается от саги на синхронных http-запросах
 
 # Do NOT touch
