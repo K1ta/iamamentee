@@ -1,15 +1,22 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 )
 
-type PaymentHandler struct{}
+type PaymentService interface {
+	Create(ctx context.Context, orderID int64, amount float64) error
+}
 
-func NewPaymentHandler() *PaymentHandler {
-	return &PaymentHandler{}
+type PaymentHandler struct {
+	service PaymentService
+}
+
+func NewPaymentHandler(service PaymentService) *PaymentHandler {
+	return &PaymentHandler{service: service}
 }
 
 type paymentRequest struct {
@@ -28,7 +35,14 @@ func (h *PaymentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+
+	if err := h.service.Create(r.Context(), req.OrderID, req.Amount); err != nil {
+		log.Println("create payment failed:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *PaymentHandler) Cancel(w http.ResponseWriter, r *http.Request) {

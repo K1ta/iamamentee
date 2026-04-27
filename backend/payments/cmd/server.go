@@ -7,6 +7,7 @@ import (
 	"payments/internal/app"
 	"payments/internal/infra/config"
 	"payments/internal/infra/storage/postgres"
+	"payments/internal/service"
 	"payments/internal/transport/httpapi"
 	"time"
 
@@ -28,7 +29,15 @@ var serverCmd = &cobra.Command{
 			return fmt.Errorf("open postgres connections: %w", err)
 		}
 
-		handler := httpapi.NewPaymentHandler()
+		db, ok := dbs["PG0"]
+		if !ok {
+			return fmt.Errorf("PG0 db connection not found")
+		}
+
+		orderPaymentRepo := postgres.NewOrderPaymentRepository(db)
+		orderPaymentService := service.NewOrderPaymentService(orderPaymentRepo)
+
+		handler := httpapi.NewPaymentHandler(orderPaymentService)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
