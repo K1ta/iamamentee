@@ -25,6 +25,40 @@ func (r *OrderPaymentRepository) Create(ctx context.Context, p *domain.OrderPaym
 	return nil
 }
 
+func (r *OrderPaymentRepository) GetNextReadyInStatus(ctx context.Context, status domain.PaymentStatus, intervalSec int) (*domain.OrderPayment, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	const query = `
+		WITH locked AS (
+			SELECT order_id FROM order_payments
+			WHERE status = $1
+			  AND (attempts < max_attempts OR max_attempts = -1)
+			  AND next_attempt_after <= now()
+			ORDER BY next_attempt_after
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE order_payments
+		SET attempts = attempts + 1,
+		    next_attempt_after = now() + ($2 * interval '1 second')
+		WHERE order_id IN (SELECT order_id FROM locked)
+		RETURNING order_id, status`
+
+	var p domain.OrderPayment
+	row := tx.QueryRowContext(ctx, query, status, intervalSec)
+	if err := row.Scan(&p.OrderID, &p.Status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNoOrderPaymentToProcess
+		}
+		return nil, fmt.Errorf("scan order_payment: %w", err)
+	}
+	return &p, tx.Commit()
+}
+
 func (r *OrderPaymentRepository) GetByID(ctx context.Context, orderID int64) (*domain.OrderPayment, error) {
 	const query = `SELECT order_id, status FROM order_payments WHERE order_id = $1`
 	row := r.db.QueryRowContext(ctx, query, orderID)

@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"payments/internal/app"
+	"payments/internal/infra/client/delivery"
 	"payments/internal/infra/config"
 	"payments/internal/infra/storage/postgres"
 	"payments/internal/service"
 	"payments/internal/transport/httpapi"
+	deliveryworker "payments/internal/workers/delivery"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -35,13 +37,18 @@ var serverCmd = &cobra.Command{
 		}
 
 		orderPaymentRepo := postgres.NewOrderPaymentRepository(db)
-		orderPaymentService := service.NewOrderPaymentService(orderPaymentRepo)
+		deliveryClient := delivery.NewClient(cfg.DeliveryURL)
+		orderPaymentService := service.NewOrderPaymentService(orderPaymentRepo, deliveryClient, service.DeliveryWorkerConfig{
+			IntervalSec: cfg.DeliveryWorkerConfig.IntervalSec,
+		})
+
+		worker := deliveryworker.NewDeliveryWorker(orderPaymentService, cfg.DeliveryWorkerConfig.PauseWhenNoWork)
 
 		handler := httpapi.NewPaymentHandler(orderPaymentService)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
-		a := app.NewServerApp(dbs, server)
+		a := app.NewServerApp(dbs, server, worker)
 		return a.Run(cmd.Context())
 	},
 }

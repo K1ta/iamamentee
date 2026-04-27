@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"payments/internal/domain"
 )
@@ -9,15 +10,26 @@ import (
 type OrderPaymentRepository interface {
 	Create(ctx context.Context, p *domain.OrderPayment) error
 	GetByID(ctx context.Context, orderID int64) (*domain.OrderPayment, error)
+	GetNextReadyInStatus(ctx context.Context, status domain.PaymentStatus, intervalSec int) (*domain.OrderPayment, error)
 	UpdateStatus(ctx context.Context, p *domain.OrderPayment, maxAttempts int) error
 }
 
-type OrderPaymentService struct {
-	repo OrderPaymentRepository
+type DeliveryClient interface {
+	CreateDelivery(ctx context.Context, orderID int64) error
 }
 
-func NewOrderPaymentService(repo OrderPaymentRepository) *OrderPaymentService {
-	return &OrderPaymentService{repo: repo}
+type DeliveryWorkerConfig struct {
+	IntervalSec int
+}
+
+type OrderPaymentService struct {
+	repo           OrderPaymentRepository
+	deliveryClient DeliveryClient
+	cfg            DeliveryWorkerConfig
+}
+
+func NewOrderPaymentService(repo OrderPaymentRepository, deliveryClient DeliveryClient, cfg DeliveryWorkerConfig) *OrderPaymentService {
+	return &OrderPaymentService{repo: repo, deliveryClient: deliveryClient, cfg: cfg}
 }
 
 func (s *OrderPaymentService) Create(ctx context.Context, orderID int64, amount float64) error {
@@ -54,4 +66,30 @@ func (s *OrderPaymentService) MockFail(ctx context.Context, orderID int64) error
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
+}
+
+// CreateDeliveryForNextOrder выбирает следующий платёж в статусе paid, создаёт доставку
+// и переводит платёж в статус done.
+// Возвращает (true, nil) если платёж обработан, (false, nil) если нечего обрабатывать.
+func (s *OrderPaymentService) CreateDeliveryForNextOrder(ctx context.Context) (bool, error) {
+	payment, err := s.repo.GetNextReadyInStatus(ctx, domain.PaymentStatusPaid, s.cfg.IntervalSec)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoOrderPaymentToProcess) {
+			return false, nil
+		}
+		return false, fmt.Errorf("get next order payment: %w", err)
+	}
+
+	if err := s.deliveryClient.CreateDelivery(ctx, payment.OrderID); err != nil {
+		return false, fmt.Errorf("create delivery: %w", err)
+	}
+
+	if err := payment.SetDone(); err != nil {
+		return false, fmt.Errorf("set done: %w", err)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
+	}
+	return true, nil
 }

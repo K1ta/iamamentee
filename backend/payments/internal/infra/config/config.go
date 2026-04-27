@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 )
@@ -11,12 +12,20 @@ import (
 type PostgresName = string
 
 type Config struct {
-	Listen   string `env:"APP_LISTEN"`
-	LogToken string `env:"APP_LOG_TOKEN"`
+	Listen      string `env:"APP_LISTEN"`
+	LogToken    string `env:"APP_LOG_TOKEN"`
+	DeliveryURL string `env:"APP_DELIVERY_URL"`
+
+	DeliveryWorkerConfig DeliveryWorkerConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
 	PostgresDatabases map[PostgresName]PostgresConfig
+}
+
+type DeliveryWorkerConfig struct {
+	IntervalSec     int           `env:"APP_DELIVERY_WORKER_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_DELIVERY_WORKER_PAUSE_WHEN_NO_WORK"`
 }
 
 type PostgresConfig struct {

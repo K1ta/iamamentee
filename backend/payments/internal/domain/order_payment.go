@@ -42,3 +42,11 @@ func (p *OrderPayment) SetFailing() error {
 	p.Status = PaymentStatusFailing
 	return nil
 }
+
+func (p *OrderPayment) SetDone() error {
+	if p.Status != PaymentStatusPaid {
+		return fmt.Errorf("cannot set done from status %s", p.Status)
+	}
+	p.Status = PaymentStatusDone
+	return nil
+}
