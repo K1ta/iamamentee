@@ -1,5 +1,7 @@
 package domain
 
+import "fmt"
+
 type PaymentStatus string
 
 const (
@@ -23,4 +25,20 @@ func NewOrderPayment(orderID int64) *OrderPayment {
 		OrderID: orderID,
 		Status:  PaymentStatusCreated,
 	}
+}
+
+func (p *OrderPayment) SetPaid() error {
+	if p.Status != PaymentStatusCreated {
+		return fmt.Errorf("cannot set paid from status %s", p.Status)
+	}
+	p.Status = PaymentStatusPaid
+	return nil
+}
+
+func (p *OrderPayment) SetFailing() error {
+	if p.Status != PaymentStatusCreated {
+		return fmt.Errorf("cannot set failing from status %s", p.Status)
+	}
+	p.Status = PaymentStatusFailing
+	return nil
 }

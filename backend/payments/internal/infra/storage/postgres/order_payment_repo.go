@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"payments/internal/domain"
 )
@@ -22,6 +23,19 @@ func (r *OrderPaymentRepository) Create(ctx context.Context, p *domain.OrderPaym
 		return fmt.Errorf("insert order_payment: %w", err)
 	}
 	return nil
+}
+
+func (r *OrderPaymentRepository) GetByID(ctx context.Context, orderID int64) (*domain.OrderPayment, error) {
+	const query = `SELECT order_id, status FROM order_payments WHERE order_id = $1`
+	row := r.db.QueryRowContext(ctx, query, orderID)
+	var p domain.OrderPayment
+	if err := row.Scan(&p.OrderID, &p.Status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrOrderPaymentNotFound
+		}
+		return nil, fmt.Errorf("scan order_payment: %w", err)
+	}
+	return &p, nil
 }
 
 // UpdateStatus сбрасывает attempts, устанавливает max_attempts и next_attempt_after=now().
