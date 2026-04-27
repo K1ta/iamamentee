@@ -3,10 +3,12 @@ package cmd
 import (
 	"database/sql"
 	"delivery/internal/app"
+	"delivery/internal/infra/client/orders"
 	"delivery/internal/infra/config"
 	"delivery/internal/infra/storage/postgres"
 	"delivery/internal/service"
 	"delivery/internal/transport/httpapi"
+	ordersworker "delivery/internal/workers/orders"
 	"fmt"
 	"log"
 	"time"
@@ -35,15 +37,19 @@ var serverCmd = &cobra.Command{
 		}
 
 		orderDeliveryRepo := postgres.NewOrderDeliveryRepository(db)
-		orderDeliveryService := service.NewOrderDeliveryService(orderDeliveryRepo, service.Config{
+		ordersClient := orders.NewClient(cfg.OrdersURL)
+		orderDeliveryService := service.NewOrderDeliveryService(orderDeliveryRepo, ordersClient, service.Config{
 			MaxAttempts: cfg.MaxAttempts,
+			IntervalSec: cfg.OrdersWorkerConfig.IntervalSec,
 		})
+
+		worker := ordersworker.NewOrdersWorker(orderDeliveryService, cfg.OrdersWorkerConfig.PauseWhenNoWork)
 
 		handler := httpapi.NewDeliveryHandler(orderDeliveryService)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
-		a := app.NewServerApp(dbs, server)
+		a := app.NewServerApp(dbs, server, worker)
 		return a.Run(cmd.Context())
 	},
 }

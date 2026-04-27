@@ -38,6 +38,40 @@ func (r *OrderDeliveryRepository) GetByID(ctx context.Context, orderID int64) (*
 	return &d, nil
 }
 
+func (r *OrderDeliveryRepository) GetNextReadyInStatus(ctx context.Context, status domain.DeliveryStatus, intervalSec int) (*domain.OrderDelivery, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	const query = `
+		WITH locked AS (
+			SELECT order_id FROM order_deliveries
+			WHERE status = $1
+			  AND (attempts < max_attempts OR max_attempts = -1)
+			  AND next_attempt_after <= now()
+			ORDER BY next_attempt_after
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE order_deliveries
+		SET attempts = attempts + 1,
+		    next_attempt_after = now() + ($2 * interval '1 second')
+		WHERE order_id IN (SELECT order_id FROM locked)
+		RETURNING order_id, status`
+
+	var d domain.OrderDelivery
+	row := tx.QueryRowContext(ctx, query, status, intervalSec)
+	if err := row.Scan(&d.OrderID, &d.Status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNoOrderDeliveryToProcess
+		}
+		return nil, fmt.Errorf("scan order_delivery: %w", err)
+	}
+	return &d, tx.Commit()
+}
+
 // UpdateStatus сбрасывает attempts, устанавливает max_attempts и next_attempt_after=now().
 func (r *OrderDeliveryRepository) UpdateStatus(ctx context.Context, d *domain.OrderDelivery, maxAttempts int) error {
 	const query = `
