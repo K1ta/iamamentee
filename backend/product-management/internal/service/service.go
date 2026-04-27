@@ -8,14 +8,20 @@ import (
 	"strconv"
 )
 
+type ProductView interface {
+	GetByID(ctx context.Context, id, userID int64) (*domain.Product, error)
+	List(ctx context.Context, userID int64) ([]domain.Product, error)
+	GetPrices(ctx context.Context, ids []int64) (map[int64]int64, error)
+}
+
 type ProductService struct {
-	productView domain.ProductView
+	productView ProductView
 	snowflake   *snowflake.Snowflake
 	uowFactory  domain.UnitOfWorkFactory
 }
 
 func NewProductService(
-	view domain.ProductView,
+	view ProductView,
 	snowflake *snowflake.Snowflake,
 	uowFactory domain.UnitOfWorkFactory,
 ) *ProductService {
@@ -64,4 +70,8 @@ func (s *ProductService) GetByID(ctx context.Context, userID int64, id int64) (*
 
 func (s *ProductService) List(ctx context.Context, userID int64) ([]domain.Product, error) {
 	return s.productView.List(ctx, userID)
+}
+
+func (s *ProductService) GetPrices(ctx context.Context, ids []int64) (map[int64]int64, error) {
+	return s.productView.GetPrices(ctx, ids)
 }

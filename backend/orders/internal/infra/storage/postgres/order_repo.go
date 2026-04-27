@@ -82,23 +82,6 @@ func (r *OrderRepository) UpdateStatus(ctx context.Context, order *domain.Order,
 	return updateStatus(ctx, r.db, order, prevStatus, maxAttempts)
 }
 
-// UpdateStatusAndSetPrices обновляет статус и фиксирует цены в items в одной транзакции.
-func (r *OrderRepository) UpdateStatusAndSetPrices(ctx context.Context, order *domain.Order, prevStatus domain.Status, maxAttempts int) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	if err := updateStatus(ctx, tx, order, prevStatus, maxAttempts); err != nil {
-		return err
-	}
-	if err := setPrices(ctx, tx, order); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
 // GetOneForProcessing атомарно выбирает один заказ в переданном статусе,
 // готовый к обработке, и инкрементирует attempts.
 // intervalSec задаёт, на сколько секунд сдвинуть next_attempt_after.
@@ -223,25 +206,6 @@ func updateStatus(ctx context.Context, db DBTX, order *domain.Order, prevStatus 
 		return domain.ErrOrderConflict
 	}
 	return nil
-}
-
-func setPrices(ctx context.Context, db DBTX, order *domain.Order) error {
-	productIDs := make([]int64, len(order.Items))
-	prices := make([]int64, len(order.Items))
-	for i, item := range order.Items {
-		productIDs[i] = item.ProductID
-		prices[i] = item.Price
-	}
-
-	const query = `
-		UPDATE items SET price = v.price
-		FROM (
-			SELECT unnest($1::bigint[]) AS product_id,
-			       unnest($2::bigint[]) AS price
-		) AS v
-		WHERE items.order_id = $3 AND items.product_id = v.product_id`
-	_, err := db.ExecContext(ctx, query, pq.Array(productIDs), pq.Array(prices), order.ID)
-	return err
 }
 
 func getItems(ctx context.Context, db DBTX, orderID int64) ([]domain.Item, error) {

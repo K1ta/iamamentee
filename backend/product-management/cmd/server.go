@@ -9,8 +9,10 @@ import (
 	"product-management/internal/infra/storage/postgres"
 	"product-management/internal/pkg/sharding"
 	"product-management/internal/pkg/snowflake"
+	"product-management/internal/infra/client/payments"
 	"product-management/internal/service"
 	"product-management/internal/transport/httpapi"
+	ordersworker "product-management/internal/workers/orders"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -44,15 +46,31 @@ var serverCmd = &cobra.Command{
 			}
 		}
 
-		productView := postgres.NewProductView(shardsPool, prevShardsPool)
+		mainDB, ok := dbs["MAIN"]
+		if !ok {
+			return fmt.Errorf("main db connection not found")
+		}
 
+		productView := postgres.NewProductView(shardsPool, prevShardsPool)
 		uowFactory := postgres.NewUnitOfWorkFactory(shardsPool, cfg.OutboxConfig.MaxAttempts)
 
 		productService := service.NewProductService(productView, snowflake.NewSnowflake(), uowFactory)
 		productHandler := httpapi.NewProductHandler(productService)
-		router := httpapi.NewRouter(productHandler)
 
-		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5))
+		orderRepo := postgres.NewOrderRepository(mainDB)
+		paymentsClient := payments.NewClient(cfg.PaymentsURL)
+		orderService := service.NewOrderService(orderRepo, paymentsClient, service.OrderConfig{
+			MaxAttempts:            cfg.ReservationWorkerConfig.MaxAttempts,
+			ReservationIntervalSec: cfg.ReservationWorkerConfig.IntervalSec,
+			PaymentIntervalSec:     cfg.PaymentWorkerConfig.IntervalSec,
+		})
+		reservationHandler := httpapi.NewReservationHandler(orderService)
+		reservationWorker := ordersworker.NewReservationWorker(orderService, cfg.ReservationWorkerConfig.PauseWhenNoWork)
+		paymentWorker := ordersworker.NewPaymentWorker(orderService, cfg.PaymentWorkerConfig.PauseWhenNoWork)
+
+		router := httpapi.NewRouter(productHandler, reservationHandler)
+
+		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker, paymentWorker)
 		return app.Run(cmd.Context())
 	},
 }

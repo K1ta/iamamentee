@@ -11,13 +11,13 @@ type OrderRepository interface {
 	Create(ctx context.Context, order *domain.Order, maxAttempts int) error
 	GetByID(ctx context.Context, id int64) (*domain.Order, error)
 	UpdateStatus(ctx context.Context, order *domain.Order, prevStatus domain.Status, maxAttempts int) error
-	UpdateStatusAndSetPrices(ctx context.Context, order *domain.Order, prevStatus domain.Status, maxAttempts int) error
 	GetOneForProcessing(ctx context.Context, status domain.Status, intervalSec int) (*domain.Order, error)
 	GetOneExceededAttempts(ctx context.Context, statuses ...domain.Status) (*domain.Order, error)
 }
 
 type ProductManagementClient interface {
-	ReserveProducts(ctx context.Context, order *domain.Order) (map[int64]int64, error)
+	GetProductPrices(ctx context.Context, items []domain.Item) (map[int64]int64, error)
+	CreateReservation(ctx context.Context, order *domain.Order) error
 }
 
 type StatusConfig struct {
@@ -52,6 +52,18 @@ func (s *OrderService) GetByID(ctx context.Context, orderID int64) (*domain.Orde
 }
 
 func (s *OrderService) Create(ctx context.Context, userID int64, items []domain.Item) (*domain.Order, error) {
+	prices, err := s.pmClient.GetProductPrices(ctx, items)
+	if err != nil {
+		return nil, fmt.Errorf("get product prices: %w", err)
+	}
+	for i, item := range items {
+		price, ok := prices[item.ProductID]
+		if !ok {
+			return nil, fmt.Errorf("price for product %d not found", item.ProductID)
+		}
+		items[i].Price = price
+	}
+
 	order, err := domain.NewOrder(userID, items)
 	if err != nil {
 		return nil, fmt.Errorf("new order: %w", err)
@@ -62,8 +74,8 @@ func (s *OrderService) Create(ctx context.Context, userID int64, items []domain.
 	return order, nil
 }
 
-// StartNextOrder выбирает следующий заказ в статусе created, резервирует товары
-// в product-management (получая актуальные цены), и переводит заказ в статус processing.
+// StartNextOrder выбирает следующий заказ в статусе created, создаёт резервацию
+// в product-management и переводит заказ в статус processing.
 // Возвращает (true, nil) если заказ был обработан, (false, nil) если нечего обрабатывать.
 func (s *OrderService) StartNextOrder(ctx context.Context) (bool, error) {
 	order, err := s.repo.GetOneForProcessing(ctx, domain.StatusCreated, s.cfg.Created.IntervalSec)
@@ -75,17 +87,16 @@ func (s *OrderService) StartNextOrder(ctx context.Context) (bool, error) {
 	}
 	prevStatus := order.Status
 
-	prices, err := s.pmClient.ReserveProducts(ctx, order)
-	if err != nil {
-		return false, fmt.Errorf("reserve products: %w", err)
+	if err := s.pmClient.CreateReservation(ctx, order); err != nil {
+		return false, fmt.Errorf("create reservation: %w", err)
 	}
 
-	if err := order.SetProcessing(prices); err != nil {
+	if err := order.SetProcessing(); err != nil {
 		return false, fmt.Errorf("set processing: %w", err)
 	}
 
-	if err := s.repo.UpdateStatusAndSetPrices(ctx, order, prevStatus, 0); err != nil {
-		return false, fmt.Errorf("update status and prices: %w", err)
+	if err := s.repo.UpdateStatus(ctx, order, prevStatus, 0); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
 	}
 	return true, nil
 }

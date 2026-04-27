@@ -11,13 +11,18 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+type worker interface {
+	Run(ctx context.Context) error
+}
+
 type ServerApp struct {
 	dbs        map[string]*sql.DB
 	httpServer *httpapi.Server
+	workers    []worker
 }
 
-func NewServerApp(dbs map[string]*sql.DB, httpServer *httpapi.Server) *ServerApp {
-	return &ServerApp{dbs: dbs, httpServer: httpServer}
+func NewServerApp(dbs map[string]*sql.DB, httpServer *httpapi.Server, workers ...worker) *ServerApp {
+	return &ServerApp{dbs: dbs, httpServer: httpServer, workers: workers}
 }
 
 func (app *ServerApp) Run(ctx context.Context) error {
@@ -25,6 +30,11 @@ func (app *ServerApp) Run(ctx context.Context) error {
 	eg.Go(func() error {
 		return app.httpServer.Run(egCtx)
 	})
+	for _, w := range app.workers {
+		eg.Go(func() error {
+			return w.Run(egCtx)
+		})
+	}
 	log.Println("server is running")
 	err := eg.Wait()
 	app.shutdown()

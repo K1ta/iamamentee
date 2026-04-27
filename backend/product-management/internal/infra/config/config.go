@@ -14,14 +14,17 @@ type PostgresName = string
 
 type Config struct {
 	Listen               string                              `env:"APP_LISTEN"`
+	PaymentsURL          string                              `env:"APP_PAYMENTS_URL"`
 	KafkaBrokers         []string                            `env:"APP_KAFKA_BROKERS"`
 	KafkaWriterBatchSize int                                 `env:"APP_KAFKA_WRITER_BATCH_SIZE"`
 	LogToken             string                              `env:"APP_LOG_TOKEN"`
 	Shards               map[sharding.ShardName]PostgresName `env:"APP_SHARDS"`
 	PrevShards           map[sharding.ShardName]PostgresName `env:"APP_PREV_SHARDS"`
 
-	OutboxConfig         OutboxConfig
-	ShardsMigratorConfig ShardsMigratorConfig
+	OutboxConfig            OutboxConfig
+	ShardsMigratorConfig    ShardsMigratorConfig
+	ReservationWorkerConfig ReservationWorkerConfig
+	PaymentWorkerConfig     PaymentWorkerConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
@@ -47,6 +50,17 @@ type ShardsMigratorConfig struct {
 	PrevShardsStartFrom map[sharding.ShardName]int64 `env:"APP_SHARDSMIGRATOR_PREV_SHARDS_START_FROM"`
 	ExcludedPrevShards  []sharding.ShardName         `env:"APP_SHARDSMIGRATOR_EXCLUDED_PREV_SHARDS"`
 	BatchLimit          int                          `env:"APP_SHARDSMIGRATOR_BATCH_LIMIT"`
+}
+
+type ReservationWorkerConfig struct {
+	IntervalSec     int           `env:"APP_RESERVATION_INTERVAL_SEC"`
+	MaxAttempts     int           `env:"APP_RESERVATION_MAX_ATTEMPTS"`
+	PauseWhenNoWork time.Duration `env:"APP_RESERVATION_PAUSE_WHEN_NO_WORK"`
+}
+
+type PaymentWorkerConfig struct {
+	IntervalSec     int           `env:"APP_PAYMENT_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_PAYMENT_PAUSE_WHEN_NO_WORK"`
 }
 
 func Parse() (*Config, error) {

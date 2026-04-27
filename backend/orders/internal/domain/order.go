@@ -73,18 +73,9 @@ func isValidStatus(s Status) bool {
 	return false
 }
 
-// SetProcessing резервирует товары и переводит заказ в статус processing.
-// prices — маппинг product_id -> price, полученный от product-management при резервации.
-func (o *Order) SetProcessing(prices map[int64]int64) error {
+func (o *Order) SetProcessing() error {
 	if o.Status != StatusCreated {
 		return fmt.Errorf("cannot set processing from status %s", o.Status)
-	}
-	for i, item := range o.Items {
-		price, ok := prices[item.ProductID]
-		if !ok {
-			return fmt.Errorf("price for product %d not found", item.ProductID)
-		}
-		o.Items[i].Price = price
 	}
 	o.Status = StatusProcessing
 	return nil

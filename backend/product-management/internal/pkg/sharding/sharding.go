@@ -50,3 +50,11 @@ func (s *Pool[T]) GetName(key string) ShardName {
 	shardName := s.resolver(slices.Collect(maps.Keys(s.shards)), key)
 	return shardName
 }
+
+func (s *Pool[T]) All() []T {
+	all := make([]T, 0, len(s.shards))
+	for _, v := range s.shards {
+		all = append(all, v)
+	}
+	return all
+}
