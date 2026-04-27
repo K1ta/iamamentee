@@ -12,7 +12,7 @@ import (
 
 type UserIDContextKey struct{}
 
-func NewRouter(productHandler *ProductHandler) chi.Router {
+func NewRouter(productHandler *ProductHandler, reservationHandler *ReservationHandler) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestLogger(&middleware.DefaultLogFormatter{Logger: log.Default()}))
@@ -22,6 +22,9 @@ func NewRouter(productHandler *ProductHandler) chi.Router {
 		r.Get("/", productHandler.List)
 		r.Get("/prices", productHandler.Prices)
 		r.Get("/{id}", productHandler.Get)
+		r.Route("/reservations", func(r chi.Router) {
+			r.Post("/create", reservationHandler.Create)
+		})
 	})
 	return r
 }

@@ -44,13 +44,22 @@ var serverCmd = &cobra.Command{
 			}
 		}
 
-		productView := postgres.NewProductView(shardsPool, prevShardsPool)
+		mainDB, ok := dbs["MAIN"]
+		if !ok {
+			return fmt.Errorf("main db connection not found")
+		}
 
+		productView := postgres.NewProductView(shardsPool, prevShardsPool)
 		uowFactory := postgres.NewUnitOfWorkFactory(shardsPool, cfg.OutboxConfig.MaxAttempts)
 
 		productService := service.NewProductService(productView, snowflake.NewSnowflake(), uowFactory)
 		productHandler := httpapi.NewProductHandler(productService)
-		router := httpapi.NewRouter(productHandler)
+
+		orderRepo := postgres.NewOrderRepository(mainDB)
+		orderService := service.NewOrderService(orderRepo)
+		reservationHandler := httpapi.NewReservationHandler(orderService)
+
+		router := httpapi.NewRouter(productHandler, reservationHandler)
 
 		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5))
 		return app.Run(cmd.Context())
