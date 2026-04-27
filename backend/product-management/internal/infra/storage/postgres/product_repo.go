@@ -38,6 +38,28 @@ func (r *ProductRepository) CreateBatch(ctx context.Context, products []domain.P
 	return err
 }
 
+func (r *ProductRepository) GetPricesByIDs(ctx context.Context, ids []int64) (map[int64]int64, error) {
+	query := "SELECT id, price FROM products WHERE id = ANY($1)"
+	rows, err := r.db.QueryContext(ctx, query, pq.Array(ids))
+	if err != nil {
+		return nil, fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	prices := make(map[int64]int64, len(ids))
+	for rows.Next() {
+		var id, price int64
+		if err := rows.Scan(&id, &price); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+		prices[id] = price
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows: %w", err)
+	}
+	return prices, nil
+}
+
 func (r *ProductRepository) GetByID(ctx context.Context, id, userID int64) (*domain.Product, error) {
 	query := "SELECT user_id, name, price FROM products WHERE id=$1 AND user_id=$2"
 	row := r.db.QueryRowContext(ctx, query, id, userID)

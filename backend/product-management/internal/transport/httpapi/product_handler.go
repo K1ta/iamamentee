@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"product-management/internal/domain"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -20,6 +21,7 @@ type (
 		Create(ctx context.Context, userID int64, name string, price int64) (*domain.Product, error)
 		GetByID(ctx context.Context, id, userID int64) (*domain.Product, error)
 		List(ctx context.Context, userID int64) ([]domain.Product, error)
+		GetPrices(ctx context.Context, ids []int64) (map[int64]int64, error)
 	}
 )
 
@@ -69,6 +71,36 @@ func (h *ProductHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(product); err != nil {
+		log.Println("failed to write response:", err)
+	}
+}
+
+func (h *ProductHandler) Prices(w http.ResponseWriter, r *http.Request) {
+	idsStr := r.URL.Query().Get("ids")
+	if idsStr == "" {
+		http.Error(w, "ids is required", http.StatusBadRequest)
+		return
+	}
+
+	parts := strings.Split(idsStr, ",")
+	ids := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		id, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+		if err != nil {
+			http.Error(w, "invalid id: "+part, http.StatusBadRequest)
+			return
+		}
+		ids = append(ids, id)
+	}
+
+	prices, err := h.service.GetPrices(r.Context(), ids)
+	if err != nil {
+		log.Println("failed to get prices:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(prices); err != nil {
 		log.Println("failed to write response:", err)
 	}
 }

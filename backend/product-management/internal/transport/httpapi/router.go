@@ -20,6 +20,7 @@ func NewRouter(productHandler *ProductHandler) chi.Router {
 		r.Use(FakeAuthMiddleware)
 		r.Post("/", productHandler.Create)
 		r.Get("/", productHandler.List)
+		r.Get("/prices", productHandler.Prices)
 		r.Get("/{id}", productHandler.Get)
 	})
 	return r
