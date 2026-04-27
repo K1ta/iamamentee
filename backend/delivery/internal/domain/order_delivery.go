@@ -1,5 +1,7 @@
 package domain
 
+import "fmt"
+
 type DeliveryStatus string
 
 const (
@@ -20,4 +22,20 @@ func NewOrderDelivery(orderID int64) *OrderDelivery {
 		OrderID: orderID,
 		Status:  DeliveryStatusCreated,
 	}
+}
+
+func (d *OrderDelivery) SetDelivered() error {
+	if d.Status != DeliveryStatusCreated {
+		return fmt.Errorf("cannot set delivered from status %s", d.Status)
+	}
+	d.Status = DeliveryStatusDelivered
+	return nil
+}
+
+func (d *OrderDelivery) SetFailing() error {
+	if d.Status != DeliveryStatusCreated {
+		return fmt.Errorf("cannot set failing from status %s", d.Status)
+	}
+	d.Status = DeliveryStatusFailing
+	return nil
 }

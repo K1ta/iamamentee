@@ -9,6 +9,8 @@ import (
 
 type DeliveryService interface {
 	Create(ctx context.Context, orderID int64) error
+	MockSuccess(ctx context.Context, orderID int64) error
+	MockFail(ctx context.Context, orderID int64) error
 }
 
 type DeliveryHandler struct {
@@ -47,7 +49,14 @@ func (h *DeliveryHandler) MockSuccess(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+
+	if err := h.service.MockSuccess(r.Context(), req.OrderID); err != nil {
+		log.Println("mock success failed:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *DeliveryHandler) MockFail(w http.ResponseWriter, r *http.Request) {
@@ -57,5 +66,12 @@ func (h *DeliveryHandler) MockFail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+
+	if err := h.service.MockFail(r.Context(), req.OrderID); err != nil {
+		log.Println("mock fail failed:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
