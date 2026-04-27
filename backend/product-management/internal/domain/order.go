@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-var ErrNoOrderForReservation = errors.New("no order for reservation")
+var ErrNoOrderFound = errors.New("no order found")
 
 type OrderStatus string
 
@@ -40,5 +40,13 @@ func (o *Order) SetReserved() error {
 		return fmt.Errorf("cannot set reserved from status %s", o.Status)
 	}
 	o.Status = OrderStatusReserved
+	return nil
+}
+
+func (o *Order) SetDone() error {
+	if o.Status != OrderStatusReserved {
+		return fmt.Errorf("cannot set done from status %s", o.Status)
+	}
+	o.Status = OrderStatusDone
 	return nil
 }

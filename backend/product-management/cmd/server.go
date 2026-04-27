@@ -9,6 +9,7 @@ import (
 	"product-management/internal/infra/storage/postgres"
 	"product-management/internal/pkg/sharding"
 	"product-management/internal/pkg/snowflake"
+	"product-management/internal/infra/client/payments"
 	"product-management/internal/service"
 	"product-management/internal/transport/httpapi"
 	ordersworker "product-management/internal/workers/orders"
@@ -57,16 +58,19 @@ var serverCmd = &cobra.Command{
 		productHandler := httpapi.NewProductHandler(productService)
 
 		orderRepo := postgres.NewOrderRepository(mainDB)
-		orderService := service.NewOrderService(orderRepo, service.OrderConfig{
-			MaxAttempts: cfg.ReservationWorkerConfig.MaxAttempts,
-			IntervalSec: cfg.ReservationWorkerConfig.IntervalSec,
+		paymentsClient := payments.NewClient(cfg.PaymentsURL)
+		orderService := service.NewOrderService(orderRepo, paymentsClient, service.OrderConfig{
+			MaxAttempts:            cfg.ReservationWorkerConfig.MaxAttempts,
+			ReservationIntervalSec: cfg.ReservationWorkerConfig.IntervalSec,
+			PaymentIntervalSec:     cfg.PaymentWorkerConfig.IntervalSec,
 		})
 		reservationHandler := httpapi.NewReservationHandler(orderService)
 		reservationWorker := ordersworker.NewReservationWorker(orderService, cfg.ReservationWorkerConfig.PauseWhenNoWork)
+		paymentWorker := ordersworker.NewPaymentWorker(orderService, cfg.PaymentWorkerConfig.PauseWhenNoWork)
 
 		router := httpapi.NewRouter(productHandler, reservationHandler)
 
-		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker)
+		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker, paymentWorker)
 		return app.Run(cmd.Context())
 	},
 }

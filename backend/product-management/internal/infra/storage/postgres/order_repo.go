@@ -25,7 +25,7 @@ func (r *OrderRepository) Create(ctx context.Context, order *domain.Order, maxAt
 	return nil
 }
 
-func (r *OrderRepository) GetNextForReservation(ctx context.Context, intervalSec int) (*domain.Order, error) {
+func (r *OrderRepository) GetNextReadyInStatus(ctx context.Context, status domain.OrderStatus, intervalSec int) (*domain.Order, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -49,10 +49,10 @@ func (r *OrderRepository) GetNextForReservation(ctx context.Context, intervalSec
 		RETURNING id, status`
 
 	var order domain.Order
-	row := tx.QueryRowContext(ctx, query, domain.OrderStatusCreated, intervalSec)
+	row := tx.QueryRowContext(ctx, query, status, intervalSec)
 	if err := row.Scan(&order.ID, &order.Status); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, domain.ErrNoOrderForReservation
+			return nil, domain.ErrNoOrderFound
 		}
 		return nil, fmt.Errorf("scan: %w", err)
 	}

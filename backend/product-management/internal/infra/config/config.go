@@ -14,6 +14,7 @@ type PostgresName = string
 
 type Config struct {
 	Listen               string                              `env:"APP_LISTEN"`
+	PaymentsURL          string                              `env:"APP_PAYMENTS_URL"`
 	KafkaBrokers         []string                            `env:"APP_KAFKA_BROKERS"`
 	KafkaWriterBatchSize int                                 `env:"APP_KAFKA_WRITER_BATCH_SIZE"`
 	LogToken             string                              `env:"APP_LOG_TOKEN"`
@@ -23,6 +24,7 @@ type Config struct {
 	OutboxConfig            OutboxConfig
 	ShardsMigratorConfig    ShardsMigratorConfig
 	ReservationWorkerConfig ReservationWorkerConfig
+	PaymentWorkerConfig     PaymentWorkerConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
@@ -54,6 +56,11 @@ type ReservationWorkerConfig struct {
 	IntervalSec     int           `env:"APP_RESERVATION_INTERVAL_SEC"`
 	MaxAttempts     int           `env:"APP_RESERVATION_MAX_ATTEMPTS"`
 	PauseWhenNoWork time.Duration `env:"APP_RESERVATION_PAUSE_WHEN_NO_WORK"`
+}
+
+type PaymentWorkerConfig struct {
+	IntervalSec     int           `env:"APP_PAYMENT_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_PAYMENT_PAUSE_WHEN_NO_WORK"`
 }
 
 func Parse() (*Config, error) {
