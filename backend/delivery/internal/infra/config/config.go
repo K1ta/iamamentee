@@ -11,8 +11,9 @@ import (
 type PostgresName = string
 
 type Config struct {
-	Listen   string `env:"APP_LISTEN"`
-	LogToken string `env:"APP_LOG_TOKEN"`
+	Listen      string `env:"APP_LISTEN"`
+	LogToken    string `env:"APP_LOG_TOKEN"`
+	MaxAttempts int    `env:"APP_MAX_ATTEMPTS"`
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]

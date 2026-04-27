@@ -1,15 +1,22 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 )
 
-type DeliveryHandler struct{}
+type DeliveryService interface {
+	Create(ctx context.Context, orderID int64) error
+}
 
-func NewDeliveryHandler() *DeliveryHandler {
-	return &DeliveryHandler{}
+type DeliveryHandler struct {
+	service DeliveryService
+}
+
+func NewDeliveryHandler(service DeliveryService) *DeliveryHandler {
+	return &DeliveryHandler{service: service}
 }
 
 type orderRequest struct {
@@ -23,7 +30,14 @@ func (h *DeliveryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+
+	if err := h.service.Create(r.Context(), req.OrderID); err != nil {
+		log.Println("create delivery failed:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *DeliveryHandler) MockSuccess(w http.ResponseWriter, r *http.Request) {

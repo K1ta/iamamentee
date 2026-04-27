@@ -5,6 +5,7 @@ import (
 	"delivery/internal/app"
 	"delivery/internal/infra/config"
 	"delivery/internal/infra/storage/postgres"
+	"delivery/internal/service"
 	"delivery/internal/transport/httpapi"
 	"fmt"
 	"log"
@@ -28,7 +29,17 @@ var serverCmd = &cobra.Command{
 			return fmt.Errorf("open postgres connections: %w", err)
 		}
 
-		handler := httpapi.NewDeliveryHandler()
+		db, ok := dbs["PG0"]
+		if !ok {
+			return fmt.Errorf("PG0 db connection not found")
+		}
+
+		orderDeliveryRepo := postgres.NewOrderDeliveryRepository(db)
+		orderDeliveryService := service.NewOrderDeliveryService(orderDeliveryRepo, service.Config{
+			MaxAttempts: cfg.MaxAttempts,
+		})
+
+		handler := httpapi.NewDeliveryHandler(orderDeliveryService)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
