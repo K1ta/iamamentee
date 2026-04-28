@@ -42,6 +42,27 @@ type completeOrderRequest struct {
 	OrderID int64 `json:"order_id"`
 }
 
+type orderItemResponse struct {
+	ProductID int64 `json:"product_id"`
+	Amount    int   `json:"amount"`
+	Price     int64 `json:"price"`
+}
+
+type orderResponse struct {
+	ID     int64               `json:"id"`
+	UserID int64               `json:"user_id"`
+	Status string              `json:"status"`
+	Items  []orderItemResponse `json:"items"`
+}
+
+func toOrderResponse(o *domain.Order) orderResponse {
+	items := make([]orderItemResponse, len(o.Items))
+	for i, item := range o.Items {
+		items[i] = orderItemResponse{ProductID: item.ProductID, Amount: item.Amount, Price: item.Price}
+	}
+	return orderResponse{ID: o.ID, UserID: o.UserID, Status: string(o.Status), Items: items}
+}
+
 func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req createOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -62,7 +83,7 @@ func (h *OrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(order); err != nil {
+	if err := json.NewEncoder(w).Encode(toOrderResponse(order)); err != nil {
 		log.Println("failed to write response:", err)
 	}
 }
@@ -121,7 +142,7 @@ func (h *OrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(order); err != nil {
+	if err := json.NewEncoder(w).Encode(toOrderResponse(order)); err != nil {
 		log.Println("failed to write response:", err)
 	}
 }

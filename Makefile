@@ -134,3 +134,11 @@ create-topic-%:
 connect-pg-%:
 	kubectl exec postgres-0 -n $*-infra -it -- \
 	psql -p 5432 -U admin -d $* -h localhost
+
+# tests
+tests-venv:
+	python -m venv tests/.venv
+	tests/.venv/bin/pip install -r tests/e2e/requirements.txt
+
+tests-e2e:
+	tests/.venv/bin/pytest -v tests/e2e
