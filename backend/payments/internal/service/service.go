@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"payments/internal/domain"
 )
 
@@ -48,7 +49,7 @@ func (s *OrderPaymentService) MockSuccess(ctx context.Context, orderID int64) er
 	if err := payment.SetPaid(); err != nil {
 		return fmt.Errorf("set paid: %w", err)
 	}
-	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
+	if err := s.repo.UpdateStatus(ctx, payment, 10); err != nil { // TODO move max_attempts to config
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
@@ -62,7 +63,7 @@ func (s *OrderPaymentService) MockFail(ctx context.Context, orderID int64) error
 	if err := payment.SetFailing(); err != nil {
 		return fmt.Errorf("set failing: %w", err)
 	}
-	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
+	if err := s.repo.UpdateStatus(ctx, payment, 10); err != nil { // TODO move max_attempts to config
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
@@ -79,6 +80,7 @@ func (s *OrderPaymentService) CreateDeliveryForNextOrder(ctx context.Context) (b
 		}
 		return false, fmt.Errorf("get next order payment: %w", err)
 	}
+	log.Printf("requesting delivery for order %d", payment.OrderID)
 
 	if err := s.deliveryClient.CreateDelivery(ctx, payment.OrderID); err != nil {
 		return false, fmt.Errorf("create delivery: %w", err)
@@ -91,5 +93,6 @@ func (s *OrderPaymentService) CreateDeliveryForNextOrder(ctx context.Context) (b
 	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
+	log.Printf("delivery reqeusted for order %d", payment.OrderID)
 	return true, nil
 }

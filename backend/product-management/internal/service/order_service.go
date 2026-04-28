@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"product-management/internal/domain"
 )
 
@@ -60,6 +61,7 @@ func (s *OrderService) RequestPaymentForNextOrder(ctx context.Context) (bool, er
 		}
 		return false, fmt.Errorf("get next for payment: %w", err)
 	}
+	log.Printf("requesting payment for %d order", order.ID)
 
 	if err := s.paymentsClient.RequestPayment(ctx, order.ID); err != nil {
 		return false, fmt.Errorf("request payment: %w", err)
@@ -72,6 +74,7 @@ func (s *OrderService) RequestPaymentForNextOrder(ctx context.Context) (bool, er
 	if err := s.repo.UpdateStatus(ctx, order, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
+	log.Printf("payment requested for %d order", order.ID)
 	return true, nil
 }
 
@@ -90,7 +93,7 @@ func (s *OrderService) ReserveNextOrder(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("set reserved: %w", err)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, order, 0); err != nil {
+	if err := s.repo.UpdateStatus(ctx, order, -1); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
 	return true, nil
