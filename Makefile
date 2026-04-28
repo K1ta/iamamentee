@@ -110,6 +110,9 @@ port-forward-%:
 logs-%:
 	kubectl logs -f -l app=$* -n $*
 
+logs:
+	stern --selector app.kubernetes.io/part-of=mentee --all-namespaces --init-containers=false --tail=1
+
 minikube-up:
 	minikube start --driver=docker --memory=12288 --cpus=4 --disk-size=20gb
 	minikube addons enable metrics-server

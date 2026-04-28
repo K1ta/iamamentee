@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: products
+        app.kubernetes.io/part-of: mentee
     spec:
       containers:
         - name: products
