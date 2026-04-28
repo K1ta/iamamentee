@@ -1,7 +1,10 @@
 package delivery
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -17,9 +20,31 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// CreateDelivery отправляет запрос на создание доставки в delivery.
-//
-// TODO: реализовать HTTP-запрос к delivery, когда сервис будет готов.
-func (c *Client) CreateDelivery(_ context.Context, _ int64) error {
+type createDeliveryRequest struct {
+	OrderID int64 `json:"order_id"`
+}
+
+func (c *Client) CreateDelivery(ctx context.Context, orderID int64) error {
+	body, err := json.Marshal(createDeliveryRequest{OrderID: orderID})
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	url := c.baseURL + "/delivery/create"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
 	return nil
 }
