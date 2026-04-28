@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: delivery
+  namespace: delivery
+spec:
+  type: ClusterIP
+  selector:
+    app: delivery
+  ports:
+    - port: 80
+      targetPort: 8080

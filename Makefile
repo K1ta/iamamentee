@@ -1,6 +1,6 @@
 .SILENT:
 
-SERVICES := product-management products orders
+SERVICES := product-management products orders payments delivery
 
 LOCAL_PORT=9999
 DB_PORT=5432
