@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 	"time"
+
+	"github.com/go-chi/chi/v5/middleware"
+	uuid "github.com/satori/go.uuid"
 )
 
 type OrderDeliveryService interface {
@@ -21,7 +24,7 @@ func NewOrdersWorker(service OrderDeliveryService, pauseWhenNoWork time.Duration
 
 func (w *OrdersWorker) Run(ctx context.Context) error {
 	for {
-		hadWork, err := w.service.CompleteNextOrder(ctx)
+		hadWork, err := w.service.CompleteNextOrder(context.WithValue(ctx, middleware.RequestIDKey, uuid.NewV4().String()))
 		if err != nil {
 			log.Println("orders worker error:", err)
 		} else if hadWork {

@@ -10,7 +10,8 @@ import (
 	"delivery/internal/transport/httpapi"
 	ordersworker "delivery/internal/workers/orders"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,7 +25,10 @@ var serverCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("parse config: %w", err)
 		}
-		log.SetPrefix(cfg.LogToken + " ")
+
+		l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		l = l.With("service", "delivery")
+		slog.SetDefault(l)
 
 		dbs, err := openConnections(cfg.PostgresDatabases)
 		if err != nil {

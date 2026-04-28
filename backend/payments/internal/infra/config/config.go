@@ -13,7 +13,6 @@ type PostgresName = string
 
 type Config struct {
 	Listen      string `env:"APP_LISTEN"`
-	LogToken    string `env:"APP_LOG_TOKEN"`
 	DeliveryURL string `env:"APP_DELIVERY_URL"`
 
 	DeliveryWorkerConfig DeliveryWorkerConfig

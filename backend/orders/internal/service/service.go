@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"orders/internal/domain"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type OrderRepository interface {
@@ -72,7 +74,7 @@ func (s *OrderService) Create(ctx context.Context, userID int64, items []domain.
 	if err := s.repo.Create(ctx, order, s.cfg.Created.MaxAttempts); err != nil {
 		return nil, fmt.Errorf("create in repo: %w", err)
 	}
-	log.Printf("order %d created", order.ID)
+	getLogger(ctx, "order_id", order.ID).Info("order created")
 	return order, nil
 }
 
@@ -89,7 +91,9 @@ func (s *OrderService) StartNextOrder(ctx context.Context) (bool, error) {
 	}
 	prevStatus := order.Status
 
-	log.Printf("reserving products for %d order", order.ID)
+	l := getLogger(ctx, "order_id", order.ID)
+	l.Info("requesting reservation for products")
+
 	if err := s.pmClient.CreateReservation(ctx, order); err != nil {
 		return false, fmt.Errorf("create reservation: %w", err)
 	}
@@ -101,7 +105,6 @@ func (s *OrderService) StartNextOrder(ctx context.Context) (bool, error) {
 	if err := s.repo.UpdateStatus(ctx, order, prevStatus, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
-	log.Printf("products for %d order reserved", order.ID)
 	return true, nil
 }
 
@@ -142,7 +145,7 @@ func (s *OrderService) Complete(ctx context.Context, orderID int64) error {
 	if err := s.repo.UpdateStatus(ctx, order, prevStatus, 0); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
-	log.Printf("order %d completed", orderID)
+	getLogger(ctx, "order_id", orderID).Info("order completed")
 	return nil
 }
 
@@ -161,4 +164,9 @@ func (s *OrderService) Cancel(ctx context.Context, orderID int64) error {
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
+}
+
+func getLogger(ctx context.Context, fields ...any) *slog.Logger {
+	l := slog.Default().With("x_request_id", middleware.GetReqID(ctx))
+	return l.With(fields...)
 }

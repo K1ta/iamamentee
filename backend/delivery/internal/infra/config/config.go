@@ -13,7 +13,6 @@ type PostgresName = string
 
 type Config struct {
 	Listen      string `env:"APP_LISTEN"`
-	LogToken    string `env:"APP_LOG_TOKEN"`
 	OrdersURL   string `env:"APP_ORDERS_URL"`
 	MaxAttempts int    `env:"APP_MAX_ATTEMPTS"`
 

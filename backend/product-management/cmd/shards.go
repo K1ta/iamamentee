@@ -3,7 +3,8 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"product-management/internal/app"
 	"product-management/internal/infra/config"
 	"product-management/internal/infra/storage/postgres"
@@ -31,7 +32,10 @@ var shardsMigrateCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("parse config: %w", err)
 		}
-		log.SetPrefix(cfg.LogToken + " ")
+
+		l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		l = l.With("service", "product-management-shards-migrator")
+		slog.SetDefault(l)
 
 		dbs, err := openConnections(cfg.PostgresDatabases)
 		if err != nil {
@@ -72,7 +76,10 @@ var shardsCleanupCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("parse config: %w", err)
 		}
-		log.SetPrefix(cfg.LogToken + " ")
+
+		l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		l = l.With("service", "product-management-shards-cleanup")
+		slog.SetDefault(l)
 
 		dbs, err := openConnections(cfg.PostgresDatabases)
 		if err != nil {

@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 	"time"
+
+	"github.com/go-chi/chi/v5/middleware"
+	uuid "github.com/satori/go.uuid"
 )
 
 type OrderService interface {
@@ -21,7 +24,7 @@ func NewReservationWorker(service OrderService, pauseWhenNoWork time.Duration) *
 
 func (w *ReservationWorker) Run(ctx context.Context) error {
 	for {
-		hadWork, err := w.service.ReserveNextOrder(ctx)
+		hadWork, err := w.service.ReserveNextOrder(context.WithValue(ctx, middleware.RequestIDKey, uuid.NewV4().String()))
 		if err != nil {
 			log.Println("reservation worker error:", err)
 		} else if hadWork {

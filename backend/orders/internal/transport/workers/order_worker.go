@@ -4,6 +4,9 @@ import (
 	"context"
 	"log"
 	"time"
+
+	"github.com/go-chi/chi/v5/middleware"
+	uuid "github.com/satori/go.uuid"
 )
 
 type OrderService interface {
@@ -28,7 +31,7 @@ func (w *OrderWorker) RunStartOrders(ctx context.Context) error {
 		default:
 		}
 
-		worked, err := w.svc.StartNextOrder(ctx)
+		worked, err := w.svc.StartNextOrder(context.WithValue(ctx, middleware.RequestIDKey, uuid.NewV4().String()))
 		if err != nil {
 			log.Println("start next order:", err)
 		}
