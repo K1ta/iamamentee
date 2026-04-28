@@ -86,6 +86,7 @@ processing -> canceled: запускается по запросу, перево
 
 - реализация саги order. Сервисы: orders (готов) -> product-management (нужен рефакторинг) -> 
 payments (нужны доработки) -> delivery (в процессе)
+- разделить internal и public ручки, убрать авторизацию с internal ручек, убрать заполнение X-User-ID для них
 - доделать product-management: сделать переход в failing статус при attempts>max_attempts, сделать отмену шага саги
 - поправить конфиг для воркеров в product-management - сейчас слишком общие названия, непонятно, для какого
 шага задается max_attempts и interval для обработки

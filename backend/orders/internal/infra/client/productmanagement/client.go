@@ -1,10 +1,14 @@
 package productmanagement
 
 import (
+	"bytes"
 	"context"
-	"math/rand"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"orders/internal/domain"
+	"strconv"
+	"strings"
 )
 
 type Client struct {
@@ -19,20 +23,83 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// GetProductPrices возвращает актуальные цены на товары из product-management.
-//
-// TODO: реализовать HTTP-запрос к product-management, когда ручка будет готова.
-func (c *Client) GetProductPrices(_ context.Context, items []domain.Item) (map[int64]int64, error) {
-	prices := make(map[int64]int64, len(items))
-	for _, item := range items {
-		prices[item.ProductID] = rand.Int63n(10000) + 1
+func (c *Client) GetProductPrices(ctx context.Context, items []domain.Item) (map[int64]int64, error) {
+	ids := make([]string, len(items))
+	for i, item := range items {
+		ids[i] = strconv.FormatInt(item.ProductID, 10)
+	}
+
+	url := c.baseURL + "/product/prices?ids=" + strings.Join(ids, ",")
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	// TODO в product-management нужен только для авторизации, в логике не участвует.
+	// Убрать, когда перенесем ручку в internal
+	req.Header.Set("X-User-ID", "1")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var prices map[int64]int64
+	if err := json.NewDecoder(resp.Body).Decode(&prices); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
 	}
 	return prices, nil
 }
 
-// CreateReservation создаёт резервацию товаров в product-management.
-//
-// TODO: реализовать HTTP-запрос к product-management, когда ручка будет готова.
-func (c *Client) CreateReservation(_ context.Context, _ *domain.Order) error {
+type createReservationRequest struct {
+	OrderID int64                   `json:"order_id"`
+	Items   []createReservationItem `json:"items"`
+}
+
+type createReservationItem struct {
+	ProductID int64 `json:"product_id"`
+	Amount    int   `json:"amount"`
+}
+
+func (c *Client) CreateReservation(ctx context.Context, order *domain.Order) error {
+	reqBody := createReservationRequest{
+		OrderID: order.ID,
+		Items:   make([]createReservationItem, len(order.Items)),
+	}
+	for i, item := range order.Items {
+		reqBody.Items[i] = createReservationItem{
+			ProductID: item.ProductID,
+			Amount:    item.Amount,
+		}
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	url := c.baseURL + "/product/reservations/create"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// TODO в product-management нужен только для авторизации, в логике не участвует.
+	// Убрать, когда перенесем ручку в internal
+	req.Header.Set("X-User-ID", strconv.FormatInt(order.UserID, 10))
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
 	return nil
 }
