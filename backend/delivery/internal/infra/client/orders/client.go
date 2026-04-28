@@ -1,7 +1,10 @@
 package orders
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -17,9 +20,33 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-// CompleteOrder отправляет запрос на завершение заказа в orders.
-//
-// TODO: реализовать HTTP-запрос к orders.
-func (c *Client) CompleteOrder(_ context.Context, _ int64) error {
+type completeOrderRequest struct {
+	OrderID int64 `json:"order_id"`
+}
+
+func (c *Client) CompleteOrder(ctx context.Context, orderID int64) error {
+	body, err := json.Marshal(completeOrderRequest{OrderID: orderID})
+	if err != nil {
+		return fmt.Errorf("marshal request: %w", err)
+	}
+
+	url := c.baseURL + "/orders/complete"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	// TODO: нужен только для авторизации, в логике Complete не участвует. Убрать, когда перенесем ручку в internal.
+	req.Header.Set("X-User-ID", "1")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
 	return nil
 }

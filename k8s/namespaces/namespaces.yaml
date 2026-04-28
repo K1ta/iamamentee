@@ -37,4 +37,28 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: payments
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: payments-infra
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: delivery
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: delivery-infra
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: kafka-common

@@ -1,6 +1,6 @@
 .SILENT:
 
-SERVICES := product-management products orders
+SERVICES := product-management products orders payments delivery
 
 LOCAL_PORT=9999
 DB_PORT=5432
@@ -130,3 +130,7 @@ create-topic-%:
 	--create --topic $* \
 	--partitions 3 \
 	--replication-factor 2
+
+connect-pg-%:
+	kubectl exec postgres-0 -n $*-infra -it -- \
+	psql -p 5432 -U admin -d $* -h localhost

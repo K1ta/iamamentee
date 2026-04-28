@@ -5,6 +5,7 @@ import (
 	"delivery/internal/domain"
 	"errors"
 	"fmt"
+	"log"
 )
 
 type OrderDeliveryRepository interface {
@@ -19,8 +20,8 @@ type OrdersClient interface {
 }
 
 type Config struct {
-	MaxAttempts    int
-	IntervalSec    int
+	MaxAttempts int
+	IntervalSec int
 }
 
 type OrderDeliveryService struct {
@@ -49,7 +50,7 @@ func (s *OrderDeliveryService) MockSuccess(ctx context.Context, orderID int64) e
 	if err := delivery.SetDelivered(); err != nil {
 		return fmt.Errorf("set delivered: %w", err)
 	}
-	if err := s.repo.UpdateStatus(ctx, delivery, 0); err != nil {
+	if err := s.repo.UpdateStatus(ctx, delivery, 10); err != nil { // TODO move max_attempts to config
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
@@ -63,7 +64,7 @@ func (s *OrderDeliveryService) MockFail(ctx context.Context, orderID int64) erro
 	if err := delivery.SetFailing(); err != nil {
 		return fmt.Errorf("set failing: %w", err)
 	}
-	if err := s.repo.UpdateStatus(ctx, delivery, 0); err != nil {
+	if err := s.repo.UpdateStatus(ctx, delivery, 10); err != nil { // TODO move max_attempts to config
 		return fmt.Errorf("update status: %w", err)
 	}
 	return nil
@@ -81,6 +82,7 @@ func (s *OrderDeliveryService) CompleteNextOrder(ctx context.Context) (bool, err
 		return false, fmt.Errorf("get next order delivery: %w", err)
 	}
 
+	log.Printf("completing order %d", delivery.OrderID)
 	if err := s.ordersClient.CompleteOrder(ctx, delivery.OrderID); err != nil {
 		return false, fmt.Errorf("complete order: %w", err)
 	}
@@ -92,5 +94,6 @@ func (s *OrderDeliveryService) CompleteNextOrder(ctx context.Context) (bool, err
 	if err := s.repo.UpdateStatus(ctx, delivery, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
+	log.Printf("order %d completed", delivery.OrderID)
 	return true, nil
 }

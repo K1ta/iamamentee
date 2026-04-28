@@ -32,3 +32,19 @@ spec:
             host: orders.orders.svc.cluster.local
             port:
               number: 80
+    - match:
+        - uri:
+            prefix: /payments
+      route:
+        - destination:
+            host: payments.payments.svc.cluster.local
+            port:
+              number: 80
+    - match:
+        - uri:
+            prefix: /delivery
+      route:
+        - destination:
+            host: delivery.delivery.svc.cluster.local
+            port:
+              number: 80

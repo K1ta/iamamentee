@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"log"
 	"product-management/internal/app"
+	"product-management/internal/infra/client/payments"
 	"product-management/internal/infra/config"
 	"product-management/internal/infra/storage/postgres"
 	"product-management/internal/pkg/sharding"
 	"product-management/internal/pkg/snowflake"
-	"product-management/internal/infra/client/payments"
 	"product-management/internal/service"
 	"product-management/internal/transport/httpapi"
 	ordersworker "product-management/internal/workers/orders"
@@ -46,7 +46,7 @@ var serverCmd = &cobra.Command{
 			}
 		}
 
-		mainDB, ok := dbs["MAIN"]
+		mainDB, ok := dbs[cfg.MainDB]
 		if !ok {
 			return fmt.Errorf("main db connection not found")
 		}
