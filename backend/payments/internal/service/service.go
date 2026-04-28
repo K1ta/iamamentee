@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"payments/internal/domain"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type OrderPaymentRepository interface {
@@ -38,6 +40,7 @@ func (s *OrderPaymentService) Create(ctx context.Context, orderID int64, amount 
 	if err := s.repo.Create(ctx, payment); err != nil {
 		return fmt.Errorf("create order payment: %w", err)
 	}
+	getLogger(ctx, "order_id", payment.OrderID).Info("payment request created")
 	return nil
 }
 
@@ -52,6 +55,7 @@ func (s *OrderPaymentService) MockSuccess(ctx context.Context, orderID int64) er
 	if err := s.repo.UpdateStatus(ctx, payment, 10); err != nil { // TODO move max_attempts to config
 		return fmt.Errorf("update status: %w", err)
 	}
+	getLogger(ctx, "order_id", payment.OrderID).Info("order paid successfully")
 	return nil
 }
 
@@ -80,7 +84,9 @@ func (s *OrderPaymentService) CreateDeliveryForNextOrder(ctx context.Context) (b
 		}
 		return false, fmt.Errorf("get next order payment: %w", err)
 	}
-	log.Printf("requesting delivery for order %d", payment.OrderID)
+
+	l := getLogger(ctx, "order_id", payment.OrderID)
+	l.Info("requesting delivery for order")
 
 	if err := s.deliveryClient.CreateDelivery(ctx, payment.OrderID); err != nil {
 		return false, fmt.Errorf("create delivery: %w", err)
@@ -93,6 +99,10 @@ func (s *OrderPaymentService) CreateDeliveryForNextOrder(ctx context.Context) (b
 	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
-	log.Printf("delivery reqeusted for order %d", payment.OrderID)
 	return true, nil
+}
+
+func getLogger(ctx context.Context, fields ...any) *slog.Logger {
+	l := slog.Default().With("x_request_id", middleware.GetReqID(ctx))
+	return l.With(fields...)
 }

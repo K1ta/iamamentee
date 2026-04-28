@@ -7,6 +7,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/lib/pq v1.11.2
+	github.com/satori/go.uuid v1.2.0
 	github.com/segmentio/kafka-go v0.4.50
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sync v0.20.0

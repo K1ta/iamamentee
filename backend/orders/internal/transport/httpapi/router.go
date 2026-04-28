@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -15,7 +16,8 @@ type userIDContextKey struct{}
 func NewRouter(orderHandler *OrderHandler) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestLogger(&middleware.DefaultLogFormatter{Logger: log.Default()}))
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RequestLogger(&middleware.DefaultLogFormatter{Logger: slog.NewLogLogger(slog.Default().Handler(), slog.LevelInfo)}))
 	r.Route("/orders", func(r chi.Router) {
 		r.Use(FakeAuthMiddleware)
 		r.Post("/create", orderHandler.Create)

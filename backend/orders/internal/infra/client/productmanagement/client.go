@@ -9,6 +9,8 @@ import (
 	"orders/internal/domain"
 	"strconv"
 	"strings"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type Client struct {
@@ -37,6 +39,7 @@ func (c *Client) GetProductPrices(ctx context.Context, items []domain.Item) (map
 	// TODO в product-management нужен только для авторизации, в логике не участвует.
 	// Убрать, когда перенесем ручку в internal
 	req.Header.Set("X-User-ID", "1")
+	req.Header.Set(middleware.RequestIDHeader, middleware.GetReqID(ctx))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

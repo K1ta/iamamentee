@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type Client struct {
@@ -43,6 +45,7 @@ func (c *Client) RequestPayment(ctx context.Context, orderID int64) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(middleware.RequestIDHeader, middleware.GetReqID(ctx))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: payments
+        app.kubernetes.io/part-of: mentee
     spec:
       containers:
         - name: payments

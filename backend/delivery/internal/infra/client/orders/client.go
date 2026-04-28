@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type Client struct {
@@ -38,6 +40,7 @@ func (c *Client) CompleteOrder(ctx context.Context, orderID int64) error {
 	req.Header.Set("Content-Type", "application/json")
 	// TODO: нужен только для авторизации, в логике Complete не участвует. Убрать, когда перенесем ручку в internal.
 	req.Header.Set("X-User-ID", "1")
+	req.Header.Set(middleware.RequestIDHeader, middleware.GetReqID(ctx))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

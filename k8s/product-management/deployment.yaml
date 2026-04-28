@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: product-management
+        app.kubernetes.io/part-of: mentee
     spec:
       containers:
         - name: product-management
@@ -45,6 +46,7 @@ spec:
     metadata:
       labels:
         app: outbox
+        app.kubernetes.io/part-of: mentee
     spec:
       containers:
         - name: product-management

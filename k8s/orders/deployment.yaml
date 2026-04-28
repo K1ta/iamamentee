@@ -12,6 +12,7 @@ spec:
     metadata:
       labels:
         app: orders
+        app.kubernetes.io/part-of: mentee
     spec:
       containers:
         - name: orders
@@ -45,6 +46,7 @@ spec:
     metadata:
       labels:
         app: orders-worker
+        app.kubernetes.io/part-of: mentee
     spec:
       containers:
         - name: orders-worker

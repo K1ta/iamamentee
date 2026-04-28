@@ -110,6 +110,13 @@ port-forward-%:
 logs-%:
 	kubectl logs -f -l app=$* -n $*
 
+logs:
+	stern --selector app.kubernetes.io/part-of=mentee --all-namespaces --init-containers=false --tail=1
+
+order-logs:
+	stern --selector app.kubernetes.io/part-of=mentee --all-namespaces --init-containers=false --output=raw --no-follow \
+	| jq -R -s '[split("\n")[] | select(. != "") | fromjson? | select(.order_id == $(ID))] | sort_by(.time)[]'
+
 minikube-up:
 	minikube start --driver=docker --memory=12288 --cpus=4 --disk-size=20gb
 	minikube addons enable metrics-server
@@ -134,3 +141,11 @@ create-topic-%:
 connect-pg-%:
 	kubectl exec postgres-0 -n $*-infra -it -- \
 	psql -p 5432 -U admin -d $* -h localhost
+
+# tests
+tests-venv:
+	python -m venv tests/.venv
+	tests/.venv/bin/pip install -r tests/e2e/requirements.txt
+
+tests-e2e:
+	tests/.venv/bin/pytest -v -s tests/e2e

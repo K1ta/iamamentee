@@ -17,7 +17,6 @@ type Config struct {
 	PaymentsURL          string                              `env:"APP_PAYMENTS_URL"`
 	KafkaBrokers         []string                            `env:"APP_KAFKA_BROKERS"`
 	KafkaWriterBatchSize int                                 `env:"APP_KAFKA_WRITER_BATCH_SIZE"`
-	LogToken             string                              `env:"APP_LOG_TOKEN"`
 	Shards               map[sharding.ShardName]PostgresName `env:"APP_SHARDS"`
 	PrevShards           map[sharding.ShardName]PostgresName `env:"APP_PREV_SHARDS"`
 	MainDB               PostgresName                        `env:"APP_MAIN_DB"`

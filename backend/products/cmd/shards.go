@@ -3,7 +3,8 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"products/internal/app"
 	"products/internal/infra/config"
 	"products/internal/infra/storage/postgres"
@@ -41,7 +42,10 @@ func runShardsMigrator(isMigrating bool) func(cmd *cobra.Command, args []string)
 		if err != nil {
 			return fmt.Errorf("parse config: %w", err)
 		}
-		log.SetPrefix(cfg.Hostname + " ")
+
+		l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		l = l.With("service", "products-shards-migrator")
+		slog.SetDefault(l)
 
 		dbs, err := openConnections(cfg.PostgresDatabases)
 		if err != nil {

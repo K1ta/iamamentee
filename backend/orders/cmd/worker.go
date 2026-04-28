@@ -2,13 +2,14 @@ package cmd
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"orders/internal/app"
 	"orders/internal/infra/client/productmanagement"
 	"orders/internal/infra/config"
 	"orders/internal/infra/storage/postgres"
 	"orders/internal/service"
 	"orders/internal/transport/workers"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,7 +23,10 @@ var workerCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("parse config: %w", err)
 		}
-		log.SetPrefix(cfg.LogToken + " ")
+
+		l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		l = l.With("service", "orders-worker")
+		slog.SetDefault(l)
 
 		pgCfg, ok := cfg.PostgresDatabases["PG"]
 		if !ok {

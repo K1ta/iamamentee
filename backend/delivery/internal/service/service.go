@@ -5,7 +5,9 @@ import (
 	"delivery/internal/domain"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
+
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 type OrderDeliveryRepository interface {
@@ -39,6 +41,7 @@ func (s *OrderDeliveryService) Create(ctx context.Context, orderID int64) error 
 	if err := s.repo.Create(ctx, delivery); err != nil {
 		return fmt.Errorf("create order delivery: %w", err)
 	}
+	getLogger(ctx, "order_id", orderID).Info("delivery request created")
 	return nil
 }
 
@@ -53,6 +56,7 @@ func (s *OrderDeliveryService) MockSuccess(ctx context.Context, orderID int64) e
 	if err := s.repo.UpdateStatus(ctx, delivery, 10); err != nil { // TODO move max_attempts to config
 		return fmt.Errorf("update status: %w", err)
 	}
+	getLogger(ctx, "order_id", delivery.OrderID).Info("order delivered successfully")
 	return nil
 }
 
@@ -82,7 +86,8 @@ func (s *OrderDeliveryService) CompleteNextOrder(ctx context.Context) (bool, err
 		return false, fmt.Errorf("get next order delivery: %w", err)
 	}
 
-	log.Printf("completing order %d", delivery.OrderID)
+	l := getLogger(ctx, "order_id", delivery.OrderID)
+	l.Info("completing order")
 	if err := s.ordersClient.CompleteOrder(ctx, delivery.OrderID); err != nil {
 		return false, fmt.Errorf("complete order: %w", err)
 	}
@@ -94,6 +99,10 @@ func (s *OrderDeliveryService) CompleteNextOrder(ctx context.Context) (bool, err
 	if err := s.repo.UpdateStatus(ctx, delivery, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
-	log.Printf("order %d completed", delivery.OrderID)
 	return true, nil
+}
+
+func getLogger(ctx context.Context, fields ...any) *slog.Logger {
+	l := slog.Default().With("x_request_id", middleware.GetReqID(ctx))
+	return l.With(fields...)
 }
