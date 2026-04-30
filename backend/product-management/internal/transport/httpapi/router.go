@@ -26,6 +26,7 @@ func NewRouter(productHandler *ProductHandler, reservationHandler *ReservationHa
 		r.Get("/{id}", productHandler.Get)
 		r.Route("/reservations", func(r chi.Router) {
 			r.Post("/create", reservationHandler.Create)
+			r.Post("/cancel", reservationHandler.Cancel)
 		})
 	})
 	return r

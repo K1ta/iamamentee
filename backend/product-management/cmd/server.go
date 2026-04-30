@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"product-management/internal/app"
+	"product-management/internal/infra/client/orders"
 	"product-management/internal/infra/client/payments"
 	"product-management/internal/infra/config"
 	"product-management/internal/infra/storage/postgres"
@@ -64,10 +65,13 @@ var serverCmd = &cobra.Command{
 
 		orderRepo := postgres.NewOrderRepository(mainDB)
 		paymentsClient := payments.NewClient(cfg.PaymentsURL)
-		orderService := service.NewOrderService(orderRepo, paymentsClient, service.OrderConfig{
-			MaxAttempts:            cfg.ReservationWorkerConfig.MaxAttempts,
-			ReservationIntervalSec: cfg.ReservationWorkerConfig.IntervalSec,
-			PaymentIntervalSec:     cfg.PaymentWorkerConfig.IntervalSec,
+		ordersClient := orders.NewClient(cfg.OrdersURL)
+		orderService := service.NewOrderService(orderRepo, paymentsClient, ordersClient, service.OrderConfig{
+			MaxAttempts:             cfg.ReservationWorkerConfig.MaxAttempts,
+			ReservationIntervalSec:  cfg.ReservationWorkerConfig.IntervalSec,
+			PaymentIntervalSec:      cfg.PaymentWorkerConfig.IntervalSec,
+			CompensationIntervalSec: cfg.CompensationWorkerConfig.IntervalSec,
+			CancellationIntervalSec: cfg.CancellationWorkerConfig.IntervalSec,
 		})
 		reservationHandler := httpapi.NewReservationHandler(orderService)
 		reservationWorker := ordersworker.NewReservationWorker(orderService, cfg.ReservationWorkerConfig.PauseWhenNoWork)

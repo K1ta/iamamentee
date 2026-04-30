@@ -59,6 +59,19 @@ func (r *OrderRepository) GetNextReadyInStatus(ctx context.Context, status domai
 	return &order, tx.Commit()
 }
 
+func (r *OrderRepository) GetByID(ctx context.Context, id int64) (*domain.Order, error) {
+	const query = `SELECT id, status FROM orders WHERE id = $1`
+	var order domain.Order
+	row := r.db.QueryRowContext(ctx, query, id)
+	if err := row.Scan(&order.ID, &order.Status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNoOrderFound
+		}
+		return nil, fmt.Errorf("scan: %w", err)
+	}
+	return &order, nil
+}
+
 func (r *OrderRepository) UpdateStatus(ctx context.Context, order *domain.Order, maxAttempts int) error {
 	const query = `
 		UPDATE orders

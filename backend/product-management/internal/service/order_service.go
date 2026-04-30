@@ -12,6 +12,7 @@ import (
 
 type OrderRepository interface {
 	Create(ctx context.Context, order *domain.Order, maxAttempts int) error
+	GetByID(ctx context.Context, id int64) (*domain.Order, error)
 	UpdateStatus(ctx context.Context, order *domain.Order, maxAttempts int) error
 	GetNextReadyInStatus(ctx context.Context, status domain.OrderStatus, intervalSec int) (*domain.Order, error)
 }
@@ -20,25 +21,32 @@ type PaymentsClient interface {
 	RequestPayment(ctx context.Context, orderID int64) error
 }
 
+type OrdersClient interface {
+	Cancel(ctx context.Context, orderID int64) error
+}
+
 type ReservationItem struct {
 	ProductID int64
 	Amount    int
 }
 
 type OrderConfig struct {
-	MaxAttempts            int
-	ReservationIntervalSec int
-	PaymentIntervalSec     int
+	MaxAttempts             int
+	ReservationIntervalSec  int
+	PaymentIntervalSec      int
+	CompensationIntervalSec int
+	CancellationIntervalSec int
 }
 
 type OrderService struct {
 	repo           OrderRepository
 	paymentsClient PaymentsClient
+	ordersClient   OrdersClient
 	cfg            OrderConfig
 }
 
-func NewOrderService(repo OrderRepository, paymentsClient PaymentsClient, cfg OrderConfig) *OrderService {
-	return &OrderService{repo: repo, paymentsClient: paymentsClient, cfg: cfg}
+func NewOrderService(repo OrderRepository, paymentsClient PaymentsClient, ordersClient OrdersClient, cfg OrderConfig) *OrderService {
+	return &OrderService{repo: repo, paymentsClient: paymentsClient, ordersClient: ordersClient, cfg: cfg}
 }
 
 func (s *OrderService) Create(ctx context.Context, orderID int64, _ []ReservationItem) error {
@@ -104,6 +112,76 @@ func (s *OrderService) ReserveNextOrder(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("update status: %w", err)
 	}
 	l.Info("products reserved")
+	return true, nil
+}
+
+// Cancel переводит резервацию заказа в статус compensating для начала компенсационного потока.
+func (s *OrderService) Cancel(ctx context.Context, orderID int64) error {
+	order, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return fmt.Errorf("get order: %w", err)
+	}
+
+	if err := order.SetCompensating(); err != nil {
+		return fmt.Errorf("set compensating: %w", err)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, order, -1); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+	getLogger(ctx, "order_id", orderID).Info("reservation cancellation started")
+	return nil
+}
+
+// CompensateNextOrder выбирает следующий заказ в статусе compensating и переводит его в compensated.
+// Возвращает (true, nil) если заказ был обработан, (false, nil) если нечего обрабатывать.
+func (s *OrderService) CompensateNextOrder(ctx context.Context) (bool, error) {
+	order, err := s.repo.GetNextReadyInStatus(ctx, domain.OrderStatusCompensating, s.cfg.CompensationIntervalSec)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoOrderFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("get next for compensation: %w", err)
+	}
+
+	if err := order.SetCompensated(); err != nil {
+		return false, fmt.Errorf("set compensated: %w", err)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, order, -1); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
+	}
+	getLogger(ctx, "order_id", order.ID).Info("reservation compensated")
+	return true, nil
+}
+
+// CancelNextOrder выбирает следующий заказ в статусе compensated, отправляет отмену в сервис заказов
+// и переводит заказ в статус canceled.
+// Возвращает (true, nil) если заказ был обработан, (false, nil) если нечего обрабатывать.
+func (s *OrderService) CancelNextOrder(ctx context.Context) (bool, error) {
+	order, err := s.repo.GetNextReadyInStatus(ctx, domain.OrderStatusCompensated, s.cfg.CancellationIntervalSec)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoOrderFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("get next for cancellation: %w", err)
+	}
+
+	l := getLogger(ctx, "order_id", order.ID)
+	l.Info("canceling order")
+
+	if err := s.ordersClient.Cancel(ctx, order.ID); err != nil {
+		return false, fmt.Errorf("cancel order: %w", err)
+	}
+
+	if err := order.SetCanceled(); err != nil {
+		return false, fmt.Errorf("set canceled: %w", err)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, order, 0); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
+	}
+	l.Info("reservation canceled")
 	return true, nil
 }
 
