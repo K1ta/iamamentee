@@ -50,3 +50,27 @@ func (o *Order) SetDone() error {
 	o.Status = OrderStatusDone
 	return nil
 }
+
+func (o *Order) SetCompensating() error {
+	if o.Status != OrderStatusDone {
+		return fmt.Errorf("cannot set compensating from status %s", o.Status)
+	}
+	o.Status = OrderStatusCompensating
+	return nil
+}
+
+func (o *Order) SetCompensated() error {
+	if o.Status != OrderStatusCompensating {
+		return fmt.Errorf("cannot set compensated from status %s", o.Status)
+	}
+	o.Status = OrderStatusCompensated
+	return nil
+}
+
+func (o *Order) SetCanceled() error {
+	if o.Status != OrderStatusCompensated {
+		return fmt.Errorf("cannot set canceled from status %s", o.Status)
+	}
+	o.Status = OrderStatusCanceled
+	return nil
+}

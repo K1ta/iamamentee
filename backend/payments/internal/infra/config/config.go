@@ -12,10 +12,12 @@ import (
 type PostgresName = string
 
 type Config struct {
-	Listen      string `env:"APP_LISTEN"`
-	DeliveryURL string `env:"APP_DELIVERY_URL"`
+	Listen               string `env:"APP_LISTEN"`
+	DeliveryURL          string `env:"APP_DELIVERY_URL"`
+	ProductManagementURL string `env:"APP_PRODUCT_MANAGEMENT_URL"`
 
 	DeliveryWorkerConfig DeliveryWorkerConfig
+	FailingWorkerConfig  FailingWorkerConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
@@ -25,6 +27,11 @@ type Config struct {
 type DeliveryWorkerConfig struct {
 	IntervalSec     int           `env:"APP_DELIVERY_WORKER_INTERVAL_SEC"`
 	PauseWhenNoWork time.Duration `env:"APP_DELIVERY_WORKER_PAUSE_WHEN_NO_WORK"`
+}
+
+type FailingWorkerConfig struct {
+	IntervalSec     int           `env:"APP_FAILING_WORKER_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_FAILING_WORKER_PAUSE_WHEN_NO_WORK"`
 }
 
 type PostgresConfig struct {

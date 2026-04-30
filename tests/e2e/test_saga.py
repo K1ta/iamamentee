@@ -25,7 +25,6 @@ class TestOrderSagaHappyPath:
         product = create_product(name="Widget", price=500)
         order = create_order(product_id=product["id"], amount=1)
         order_id = order["id"]
-        print(f"\norder_id: {order['id']}")
 
         wait_for_order_status(order_id, "processing")
         confirm_payment(order_id)
@@ -50,7 +49,6 @@ class TestOrderCreation:
 
 
 class TestOrderSagaNegativePaths:
-    @pytest.mark.skip(reason="compensation for payment failure not implemented")
     def test_payment_failure_cancels_order(self, create_product, create_order):
         """
         Scenario: payment fails

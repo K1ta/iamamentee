@@ -80,14 +80,15 @@ processing -> canceled: запускается по запросу, перево
 - рефакторинг product-management, чтобы он был вторым шагом саги. Добавление стока товаров, возможности резерваций
 - реализация сервиса payments с happy path
 - реализация сервиса delivery с happy path
-- финальные доработки и проверка happy path саги
+- финальные доработки и проверка happy path саги. Сервисы: orders -> product-management -> payments -> delivery
 
 ## In progress
 
+- Отмена саги при ошибке оплаты (смотреть в BACKLOG.md)
+
 ## Planned
 
-- реализация саги order. Сервисы: orders (готов) -> product-management (нужен рефакторинг) -> 
-payments (нужны доработки) -> delivery (в процессе)
+- поправить обработку событий с бесконечными ретраями: сделать exponential backoff
 - поправить ошибки lost update в сервисах payments, delivery, product-management - сейчас шаги саги выбираются из бд,
 обновляются, записываются в базу - нужно проверять prevStatus при обновлении в бд
 - добавить продукты и их количество в заказы в product-management. Сейчас цена заказа при отправке в payments
@@ -97,8 +98,6 @@ payments (нужны доработки) -> delivery (в процессе)
 - поправить конфиг для воркеров в product-management - сейчас слишком общие названия, непонятно, для какого
 шага задается max_attempts и interval для обработки
 - вынести в product-management воркеров в отдельный cmd с отдельным деплойментом
-- доделать payments: сейчас готов только happy path, нужно еще обрабатывать cancel request и отправлять 
-cancel запрос в product-management из статуса failing 
 - вынести имя коннекта main db в конфиг (видел у payments и delivery)
 - перевести сагу на кафку (или сделать новую), чтобы сравнить, чем она отличается от саги на синхронных http-запросах
 

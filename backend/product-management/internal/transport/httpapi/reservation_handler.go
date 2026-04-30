@@ -10,6 +10,7 @@ import (
 
 type ReservationService interface {
 	Create(ctx context.Context, orderID int64, items []service.ReservationItem) error
+	Cancel(ctx context.Context, orderID int64) error
 }
 
 type ReservationHandler struct {
@@ -28,6 +29,27 @@ type createReservationRequest struct {
 type createReservationItem struct {
 	ProductID int64 `json:"product_id"`
 	Amount    int   `json:"amount"`
+}
+
+type cancelReservationRequest struct {
+	OrderID int64 `json:"order_id"`
+}
+
+func (h *ReservationHandler) Cancel(w http.ResponseWriter, r *http.Request) {
+	var req cancelReservationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Println("decode cancelReservationRequest failed:", err)
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.Cancel(r.Context(), req.OrderID); err != nil {
+		log.Println("failed to cancel reservation:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *ReservationHandler) Create(w http.ResponseWriter, r *http.Request) {

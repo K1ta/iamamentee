@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"product-management/internal/app"
+	"product-management/internal/infra/client/orders"
 	"product-management/internal/infra/client/payments"
 	"product-management/internal/infra/config"
 	"product-management/internal/infra/storage/postgres"
@@ -64,18 +65,23 @@ var serverCmd = &cobra.Command{
 
 		orderRepo := postgres.NewOrderRepository(mainDB)
 		paymentsClient := payments.NewClient(cfg.PaymentsURL)
-		orderService := service.NewOrderService(orderRepo, paymentsClient, service.OrderConfig{
-			MaxAttempts:            cfg.ReservationWorkerConfig.MaxAttempts,
-			ReservationIntervalSec: cfg.ReservationWorkerConfig.IntervalSec,
-			PaymentIntervalSec:     cfg.PaymentWorkerConfig.IntervalSec,
+		ordersClient := orders.NewClient(cfg.OrdersURL)
+		orderService := service.NewOrderService(orderRepo, paymentsClient, ordersClient, service.OrderConfig{
+			MaxAttempts:             cfg.ReservationWorkerConfig.MaxAttempts,
+			ReservationIntervalSec:  cfg.ReservationWorkerConfig.IntervalSec,
+			PaymentIntervalSec:      cfg.PaymentWorkerConfig.IntervalSec,
+			CompensationIntervalSec: cfg.CompensationWorkerConfig.IntervalSec,
+			CancellationIntervalSec: cfg.CancellationWorkerConfig.IntervalSec,
 		})
 		reservationHandler := httpapi.NewReservationHandler(orderService)
 		reservationWorker := ordersworker.NewReservationWorker(orderService, cfg.ReservationWorkerConfig.PauseWhenNoWork)
 		paymentWorker := ordersworker.NewPaymentWorker(orderService, cfg.PaymentWorkerConfig.PauseWhenNoWork)
+		compensationWorker := ordersworker.NewCompensationWorker(orderService, cfg.CompensationWorkerConfig.PauseWhenNoWork)
+		cancellationWorker := ordersworker.NewCancellationWorker(orderService, cfg.CancellationWorkerConfig.PauseWhenNoWork)
 
 		router := httpapi.NewRouter(productHandler, reservationHandler)
 
-		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker, paymentWorker)
+		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker, paymentWorker, compensationWorker, cancellationWorker)
 		return app.Run(cmd.Context())
 	},
 }

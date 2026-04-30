@@ -15,16 +15,19 @@ type PostgresName = string
 type Config struct {
 	Listen               string                              `env:"APP_LISTEN"`
 	PaymentsURL          string                              `env:"APP_PAYMENTS_URL"`
+	OrdersURL            string                              `env:"APP_ORDERS_URL"`
 	KafkaBrokers         []string                            `env:"APP_KAFKA_BROKERS"`
 	KafkaWriterBatchSize int                                 `env:"APP_KAFKA_WRITER_BATCH_SIZE"`
 	Shards               map[sharding.ShardName]PostgresName `env:"APP_SHARDS"`
 	PrevShards           map[sharding.ShardName]PostgresName `env:"APP_PREV_SHARDS"`
 	MainDB               PostgresName                        `env:"APP_MAIN_DB"`
 
-	OutboxConfig            OutboxConfig
-	ShardsMigratorConfig    ShardsMigratorConfig
-	ReservationWorkerConfig ReservationWorkerConfig
-	PaymentWorkerConfig     PaymentWorkerConfig
+	OutboxConfig             OutboxConfig
+	ShardsMigratorConfig     ShardsMigratorConfig
+	ReservationWorkerConfig  ReservationWorkerConfig
+	PaymentWorkerConfig      PaymentWorkerConfig
+	CompensationWorkerConfig CompensationWorkerConfig
+	CancellationWorkerConfig CancellationWorkerConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
@@ -61,6 +64,16 @@ type ReservationWorkerConfig struct {
 type PaymentWorkerConfig struct {
 	IntervalSec     int           `env:"APP_PAYMENT_INTERVAL_SEC"`
 	PauseWhenNoWork time.Duration `env:"APP_PAYMENT_PAUSE_WHEN_NO_WORK"`
+}
+
+type CompensationWorkerConfig struct {
+	IntervalSec     int           `env:"APP_COMPENSATION_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_COMPENSATION_PAUSE_WHEN_NO_WORK"`
+}
+
+type CancellationWorkerConfig struct {
+	IntervalSec     int           `env:"APP_CANCELLATION_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_CANCELLATION_PAUSE_WHEN_NO_WORK"`
 }
 
 func Parse() (*Config, error) {
