@@ -7,11 +7,13 @@ import (
 	"os"
 	"payments/internal/app"
 	"payments/internal/infra/client/delivery"
+	"payments/internal/infra/client/productmanagement"
 	"payments/internal/infra/config"
 	"payments/internal/infra/storage/postgres"
 	"payments/internal/service"
 	"payments/internal/transport/httpapi"
 	deliveryworker "payments/internal/workers/delivery"
+	failingworker "payments/internal/workers/failing"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -27,7 +29,7 @@ var serverCmd = &cobra.Command{
 		}
 
 		l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-		l = l.With("service", "delivery")
+		l = l.With("service", "payments")
 		slog.SetDefault(l)
 
 		dbs, err := openConnections(cfg.PostgresDatabases)
@@ -42,17 +44,20 @@ var serverCmd = &cobra.Command{
 
 		orderPaymentRepo := postgres.NewOrderPaymentRepository(db)
 		deliveryClient := delivery.NewClient(cfg.DeliveryURL)
-		orderPaymentService := service.NewOrderPaymentService(orderPaymentRepo, deliveryClient, service.DeliveryWorkerConfig{
-			IntervalSec: cfg.DeliveryWorkerConfig.IntervalSec,
+		productManagementClient := productmanagement.NewClient(cfg.ProductManagementURL)
+		orderPaymentService := service.NewOrderPaymentService(orderPaymentRepo, deliveryClient, productManagementClient, service.DeliveryWorkerConfig{
+			IntervalSec:        cfg.DeliveryWorkerConfig.IntervalSec,
+			FailingIntervalSec: cfg.FailingWorkerConfig.IntervalSec,
 		})
 
 		worker := deliveryworker.NewDeliveryWorker(orderPaymentService, cfg.DeliveryWorkerConfig.PauseWhenNoWork)
+		fWorker := failingworker.NewFailingWorker(orderPaymentService, cfg.FailingWorkerConfig.PauseWhenNoWork)
 
 		handler := httpapi.NewPaymentHandler(orderPaymentService)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
-		a := app.NewServerApp(dbs, server, worker)
+		a := app.NewServerApp(dbs, server, worker, fWorker)
 		return a.Run(cmd.Context())
 	},
 }

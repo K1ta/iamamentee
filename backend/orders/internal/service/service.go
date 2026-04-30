@@ -51,7 +51,12 @@ func NewOrderService(
 }
 
 func (s *OrderService) GetByID(ctx context.Context, orderID int64) (*domain.Order, error) {
-	return s.repo.GetByID(ctx, orderID)
+	order, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	getLogger(ctx, "order_id", orderID).Info("order status: " + string(order.Status))
+	return order, nil
 }
 
 func (s *OrderService) Create(ctx context.Context, userID int64, items []domain.Item) (*domain.Order, error) {
@@ -163,6 +168,7 @@ func (s *OrderService) Cancel(ctx context.Context, orderID int64) error {
 	if err := s.repo.UpdateStatus(ctx, order, prevStatus, 0); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
+	getLogger(ctx, "order_id", order.ID).Info("order canceled")
 	return nil
 }
 

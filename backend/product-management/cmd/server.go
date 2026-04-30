@@ -76,10 +76,12 @@ var serverCmd = &cobra.Command{
 		reservationHandler := httpapi.NewReservationHandler(orderService)
 		reservationWorker := ordersworker.NewReservationWorker(orderService, cfg.ReservationWorkerConfig.PauseWhenNoWork)
 		paymentWorker := ordersworker.NewPaymentWorker(orderService, cfg.PaymentWorkerConfig.PauseWhenNoWork)
+		compensationWorker := ordersworker.NewCompensationWorker(orderService, cfg.CompensationWorkerConfig.PauseWhenNoWork)
+		cancellationWorker := ordersworker.NewCancellationWorker(orderService, cfg.CancellationWorkerConfig.PauseWhenNoWork)
 
 		router := httpapi.NewRouter(productHandler, reservationHandler)
 
-		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker, paymentWorker)
+		app := app.NewServerApp(dbs, httpapi.NewServer(cfg.Listen, router, time.Second*5), reservationWorker, paymentWorker, compensationWorker, cancellationWorker)
 		return app.Run(cmd.Context())
 	},
 }

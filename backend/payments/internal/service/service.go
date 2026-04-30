@@ -21,18 +21,24 @@ type DeliveryClient interface {
 	CreateDelivery(ctx context.Context, orderID int64) error
 }
 
+type ProductManagementClient interface {
+	CancelReservation(ctx context.Context, orderID int64) error
+}
+
 type DeliveryWorkerConfig struct {
-	IntervalSec int
+	IntervalSec        int
+	FailingIntervalSec int
 }
 
 type OrderPaymentService struct {
-	repo           OrderPaymentRepository
-	deliveryClient DeliveryClient
-	cfg            DeliveryWorkerConfig
+	repo                    OrderPaymentRepository
+	deliveryClient          DeliveryClient
+	productManagementClient ProductManagementClient
+	cfg                     DeliveryWorkerConfig
 }
 
-func NewOrderPaymentService(repo OrderPaymentRepository, deliveryClient DeliveryClient, cfg DeliveryWorkerConfig) *OrderPaymentService {
-	return &OrderPaymentService{repo: repo, deliveryClient: deliveryClient, cfg: cfg}
+func NewOrderPaymentService(repo OrderPaymentRepository, deliveryClient DeliveryClient, productManagementClient ProductManagementClient, cfg DeliveryWorkerConfig) *OrderPaymentService {
+	return &OrderPaymentService{repo: repo, deliveryClient: deliveryClient, productManagementClient: productManagementClient, cfg: cfg}
 }
 
 func (s *OrderPaymentService) Create(ctx context.Context, orderID int64, amount float64) error {
@@ -70,6 +76,7 @@ func (s *OrderPaymentService) MockFail(ctx context.Context, orderID int64) error
 	if err := s.repo.UpdateStatus(ctx, payment, 10); err != nil { // TODO move max_attempts to config
 		return fmt.Errorf("update status: %w", err)
 	}
+	getLogger(ctx, "order_id", payment.OrderID).Info("order payment failed")
 	return nil
 }
 
@@ -99,6 +106,37 @@ func (s *OrderPaymentService) CreateDeliveryForNextOrder(ctx context.Context) (b
 	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
+	return true, nil
+}
+
+// FailNextOrder выбирает следующий платёж в статусе failing, отменяет резервацию в product-management
+// и переводит платёж в статус failed.
+// Возвращает (true, nil) если платёж обработан, (false, nil) если нечего обрабатывать.
+func (s *OrderPaymentService) FailNextOrder(ctx context.Context) (bool, error) {
+	payment, err := s.repo.GetNextReadyInStatus(ctx, domain.PaymentStatusFailing, s.cfg.FailingIntervalSec)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoOrderPaymentToProcess) {
+			return false, nil
+		}
+		return false, fmt.Errorf("get next failing payment: %w", err)
+	}
+
+	l := getLogger(ctx, "order_id", payment.OrderID)
+	l.Info("failing payment, canceling reservation")
+
+	if err := s.productManagementClient.CancelReservation(ctx, payment.OrderID); err != nil {
+		l.Error("reservation cancel failed", "error", err)
+		return false, fmt.Errorf("cancel reservation: %w", err)
+	}
+
+	if err := payment.SetFailed(); err != nil {
+		return false, fmt.Errorf("set failed: %w", err)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
+	}
+	l.Info("payment failed")
 	return true, nil
 }
 

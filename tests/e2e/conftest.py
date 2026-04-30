@@ -13,6 +13,7 @@ def create_product():
             headers={"X-User-ID": user_id},
         )
         r.raise_for_status()
+        print(f"product created: {r.json()['id']}")
         return r.json()
 
     return _create
@@ -27,6 +28,7 @@ def create_order():
             headers={"X-User-ID": user_id},
         )
         r.raise_for_status()
+        print(f"order created: {r.json()['id']}")
         return r.json()
 
     return _create

@@ -1,4 +1,4 @@
-package orders
+package productmanagement
 
 import (
 	"bytes"
@@ -22,17 +22,17 @@ func NewClient(baseURL string) *Client {
 	}
 }
 
-type cancelOrderRequest struct {
+type cancelReservationRequest struct {
 	OrderID int64 `json:"order_id"`
 }
 
-func (c *Client) Cancel(ctx context.Context, orderID int64) error {
-	body, err := json.Marshal(cancelOrderRequest{OrderID: orderID})
+func (c *Client) CancelReservation(ctx context.Context, orderID int64) error {
+	body, err := json.Marshal(cancelReservationRequest{OrderID: orderID})
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	url := c.baseURL + "/orders/cancel"
+	url := c.baseURL + "/product/reservations/cancel"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
