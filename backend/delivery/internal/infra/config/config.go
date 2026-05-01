@@ -14,9 +14,11 @@ type PostgresName = string
 type Config struct {
 	Listen      string `env:"APP_LISTEN"`
 	OrdersURL   string `env:"APP_ORDERS_URL"`
+	PaymentsURL string `env:"APP_PAYMENTS_URL"`
 	MaxAttempts int    `env:"APP_MAX_ATTEMPTS"`
 
-	OrdersWorkerConfig OrdersWorkerConfig
+	OrdersWorkerConfig  OrdersWorkerConfig
+	FailingWorkerConfig FailingWorkerConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
@@ -26,6 +28,11 @@ type Config struct {
 type OrdersWorkerConfig struct {
 	IntervalSec     int           `env:"APP_ORDERS_WORKER_INTERVAL_SEC"`
 	PauseWhenNoWork time.Duration `env:"APP_ORDERS_WORKER_PAUSE_WHEN_NO_WORK"`
+}
+
+type FailingWorkerConfig struct {
+	IntervalSec     int           `env:"APP_FAILING_WORKER_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_FAILING_WORKER_PAUSE_WHEN_NO_WORK"`
 }
 
 type PostgresConfig struct {

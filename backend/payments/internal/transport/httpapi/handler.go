@@ -9,6 +9,7 @@ import (
 
 type PaymentService interface {
 	Create(ctx context.Context, orderID int64, amount float64) error
+	Cancel(ctx context.Context, orderID int64) error
 	MockSuccess(ctx context.Context, orderID int64) error
 	MockFail(ctx context.Context, orderID int64) error
 }
@@ -54,7 +55,14 @@ func (h *PaymentHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	http.Error(w, http.StatusText(http.StatusNotImplemented), http.StatusNotImplemented)
+
+	if err := h.service.Cancel(r.Context(), req.OrderID); err != nil {
+		log.Println("cancel payment failed:", err)
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *PaymentHandler) MockSuccess(w http.ResponseWriter, r *http.Request) {

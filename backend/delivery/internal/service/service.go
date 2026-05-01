@@ -21,19 +21,25 @@ type OrdersClient interface {
 	CompleteOrder(ctx context.Context, orderID int64) error
 }
 
+type PaymentsClient interface {
+	CancelPayment(ctx context.Context, orderID int64) error
+}
+
 type Config struct {
-	MaxAttempts int
-	IntervalSec int
+	MaxAttempts    int
+	IntervalSec    int
+	FailingIntervalSec int
 }
 
 type OrderDeliveryService struct {
-	repo         OrderDeliveryRepository
-	ordersClient OrdersClient
-	cfg          Config
+	repo           OrderDeliveryRepository
+	ordersClient   OrdersClient
+	paymentsClient PaymentsClient
+	cfg            Config
 }
 
-func NewOrderDeliveryService(repo OrderDeliveryRepository, ordersClient OrdersClient, cfg Config) *OrderDeliveryService {
-	return &OrderDeliveryService{repo: repo, ordersClient: ordersClient, cfg: cfg}
+func NewOrderDeliveryService(repo OrderDeliveryRepository, ordersClient OrdersClient, paymentsClient PaymentsClient, cfg Config) *OrderDeliveryService {
+	return &OrderDeliveryService{repo: repo, ordersClient: ordersClient, paymentsClient: paymentsClient, cfg: cfg}
 }
 
 func (s *OrderDeliveryService) Create(ctx context.Context, orderID int64) error {
@@ -99,6 +105,37 @@ func (s *OrderDeliveryService) CompleteNextOrder(ctx context.Context) (bool, err
 	if err := s.repo.UpdateStatus(ctx, delivery, 0); err != nil {
 		return false, fmt.Errorf("update status: %w", err)
 	}
+	return true, nil
+}
+
+// FailNextOrder выбирает следующую доставку в статусе failing, отменяет платёж
+// и переводит доставку в статус failed.
+// Возвращает (true, nil) если доставка обработана, (false, nil) если нечего обрабатывать.
+func (s *OrderDeliveryService) FailNextOrder(ctx context.Context) (bool, error) {
+	delivery, err := s.repo.GetNextReadyInStatus(ctx, domain.DeliveryStatusFailing, s.cfg.FailingIntervalSec)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoOrderDeliveryToProcess) {
+			return false, nil
+		}
+		return false, fmt.Errorf("get next failing delivery: %w", err)
+	}
+
+	l := getLogger(ctx, "order_id", delivery.OrderID)
+	l.Info("failing delivery, canceling payment")
+
+	if err := s.paymentsClient.CancelPayment(ctx, delivery.OrderID); err != nil {
+		l.Error("payment cancel failed", "error", err)
+		return false, fmt.Errorf("cancel payment: %w", err)
+	}
+
+	if err := delivery.SetFailed(); err != nil {
+		return false, fmt.Errorf("set failed: %w", err)
+	}
+
+	if err := s.repo.UpdateStatus(ctx, delivery, 0); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
+	}
+	l.Info("delivery failed")
 	return true, nil
 }
 

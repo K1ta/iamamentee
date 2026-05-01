@@ -26,8 +26,10 @@ type ProductManagementClient interface {
 }
 
 type DeliveryWorkerConfig struct {
-	IntervalSec        int
-	FailingIntervalSec int
+	IntervalSec             int
+	FailingIntervalSec      int
+	CompensationIntervalSec int
+	CancellationIntervalSec int
 }
 
 type OrderPaymentService struct {
@@ -137,6 +139,75 @@ func (s *OrderPaymentService) FailNextOrder(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("update status: %w", err)
 	}
 	l.Info("payment failed")
+	return true, nil
+}
+
+// Cancel переводит платёж в статус compensating, инициируя процесс отмены.
+func (s *OrderPaymentService) Cancel(ctx context.Context, orderID int64) error {
+	payment, err := s.repo.GetByID(ctx, orderID)
+	if err != nil {
+		return fmt.Errorf("get order payment: %w", err)
+	}
+	if err := payment.SetCompensating(); err != nil {
+		return fmt.Errorf("set compensating: %w", err)
+	}
+	if err := s.repo.UpdateStatus(ctx, payment, 10); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+	getLogger(ctx, "order_id", payment.OrderID).Info("payment cancellation started")
+	return nil
+}
+
+// CompensateNextOrder выбирает следующий платёж в статусе compensating, начинает возврат средств
+// и переводит платёж в статус compensated.
+// Возвращает (true, nil) если платёж обработан, (false, nil) если нечего обрабатывать.
+func (s *OrderPaymentService) CompensateNextOrder(ctx context.Context) (bool, error) {
+	payment, err := s.repo.GetNextReadyInStatus(ctx, domain.PaymentStatusCompensating, s.cfg.CompensationIntervalSec)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoOrderPaymentToProcess) {
+			return false, nil
+		}
+		return false, fmt.Errorf("get next compensating payment: %w", err)
+	}
+
+	l := getLogger(ctx, "order_id", payment.OrderID)
+	l.Info("started refund process")
+
+	if err := payment.SetCompensated(); err != nil {
+		return false, fmt.Errorf("set compensated: %w", err)
+	}
+	if err := s.repo.UpdateStatus(ctx, payment, 10); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
+	}
+	return true, nil
+}
+
+// CancelNextOrder выбирает следующий платёж в статусе compensated, отменяет резервацию в product-management
+// и переводит платёж в статус canceled.
+// Возвращает (true, nil) если платёж обработан, (false, nil) если нечего обрабатывать.
+func (s *OrderPaymentService) CancelNextOrder(ctx context.Context) (bool, error) {
+	payment, err := s.repo.GetNextReadyInStatus(ctx, domain.PaymentStatusCompensated, s.cfg.CancellationIntervalSec)
+	if err != nil {
+		if errors.Is(err, domain.ErrNoOrderPaymentToProcess) {
+			return false, nil
+		}
+		return false, fmt.Errorf("get next compensated payment: %w", err)
+	}
+
+	l := getLogger(ctx, "order_id", payment.OrderID)
+
+	if err := s.productManagementClient.CancelReservation(ctx, payment.OrderID); err != nil {
+		l.Error("reservation cancel failed", "error", err)
+		return false, fmt.Errorf("cancel reservation: %w", err)
+	}
+
+	if err := payment.SetCanceled(); err != nil {
+		return false, fmt.Errorf("set canceled: %w", err)
+	}
+	if err := s.repo.UpdateStatus(ctx, payment, 0); err != nil {
+		return false, fmt.Errorf("update status: %w", err)
+	}
+	l.Info("payment canceled")
 	return true, nil
 }
 

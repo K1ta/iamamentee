@@ -12,6 +12,8 @@ import (
 	"payments/internal/infra/storage/postgres"
 	"payments/internal/service"
 	"payments/internal/transport/httpapi"
+	cancellationworker "payments/internal/workers/cancellation"
+	compensationworker "payments/internal/workers/compensation"
 	deliveryworker "payments/internal/workers/delivery"
 	failingworker "payments/internal/workers/failing"
 	"time"
@@ -46,18 +48,22 @@ var serverCmd = &cobra.Command{
 		deliveryClient := delivery.NewClient(cfg.DeliveryURL)
 		productManagementClient := productmanagement.NewClient(cfg.ProductManagementURL)
 		orderPaymentService := service.NewOrderPaymentService(orderPaymentRepo, deliveryClient, productManagementClient, service.DeliveryWorkerConfig{
-			IntervalSec:        cfg.DeliveryWorkerConfig.IntervalSec,
-			FailingIntervalSec: cfg.FailingWorkerConfig.IntervalSec,
+			IntervalSec:             cfg.DeliveryWorkerConfig.IntervalSec,
+			FailingIntervalSec:      cfg.FailingWorkerConfig.IntervalSec,
+			CompensationIntervalSec: cfg.CompensationWorkerConfig.IntervalSec,
+			CancellationIntervalSec: cfg.CancellationWorkerConfig.IntervalSec,
 		})
 
 		worker := deliveryworker.NewDeliveryWorker(orderPaymentService, cfg.DeliveryWorkerConfig.PauseWhenNoWork)
 		fWorker := failingworker.NewFailingWorker(orderPaymentService, cfg.FailingWorkerConfig.PauseWhenNoWork)
+		cWorker := compensationworker.NewCompensationWorker(orderPaymentService, cfg.CompensationWorkerConfig.PauseWhenNoWork)
+		cancelWorker := cancellationworker.NewCancellationWorker(orderPaymentService, cfg.CancellationWorkerConfig.PauseWhenNoWork)
 
 		handler := httpapi.NewPaymentHandler(orderPaymentService)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
-		a := app.NewServerApp(dbs, server, worker, fWorker)
+		a := app.NewServerApp(dbs, server, worker, fWorker, cWorker, cancelWorker)
 		return a.Run(cmd.Context())
 	},
 }

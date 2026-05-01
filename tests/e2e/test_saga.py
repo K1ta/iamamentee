@@ -66,7 +66,6 @@ class TestOrderSagaNegativePaths:
         fail_payment(order_id)
         wait_for_order_status(order_id, "canceled")
 
-    @pytest.mark.skip(reason="compensation for delivery failure not implemented")
     def test_delivery_failure_cancels_order(self, create_product, create_order):
         """
         Scenario: delivery fails after successful payment
