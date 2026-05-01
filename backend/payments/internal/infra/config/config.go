@@ -16,8 +16,10 @@ type Config struct {
 	DeliveryURL          string `env:"APP_DELIVERY_URL"`
 	ProductManagementURL string `env:"APP_PRODUCT_MANAGEMENT_URL"`
 
-	DeliveryWorkerConfig DeliveryWorkerConfig
-	FailingWorkerConfig  FailingWorkerConfig
+	DeliveryWorkerConfig     DeliveryWorkerConfig
+	FailingWorkerConfig      FailingWorkerConfig
+	CompensationWorkerConfig CompensationWorkerConfig
+	CancellationWorkerConfig CancellationWorkerConfig
 
 	// Динамический конфиг, заполняется вручную. Формат названия - APP_POSTGRES_[NAME]_[VARIABLE]=[VALUE].
 	// Названия VARIABLE смотреть в [PostgresConfig]
@@ -32,6 +34,16 @@ type DeliveryWorkerConfig struct {
 type FailingWorkerConfig struct {
 	IntervalSec     int           `env:"APP_FAILING_WORKER_INTERVAL_SEC"`
 	PauseWhenNoWork time.Duration `env:"APP_FAILING_WORKER_PAUSE_WHEN_NO_WORK"`
+}
+
+type CompensationWorkerConfig struct {
+	IntervalSec     int           `env:"APP_COMPENSATION_WORKER_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_COMPENSATION_WORKER_PAUSE_WHEN_NO_WORK"`
+}
+
+type CancellationWorkerConfig struct {
+	IntervalSec     int           `env:"APP_CANCELLATION_WORKER_INTERVAL_SEC"`
+	PauseWhenNoWork time.Duration `env:"APP_CANCELLATION_WORKER_PAUSE_WHEN_NO_WORK"`
 }
 
 type PostgresConfig struct {

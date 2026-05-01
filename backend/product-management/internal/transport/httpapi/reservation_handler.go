@@ -22,8 +22,8 @@ func NewReservationHandler(svc ReservationService) *ReservationHandler {
 }
 
 type createReservationRequest struct {
-	OrderID int64                    `json:"order_id"`
-	Items   []createReservationItem  `json:"items"`
+	OrderID int64                   `json:"order_id"`
+	Items   []createReservationItem `json:"items"`
 }
 
 type createReservationItem struct {

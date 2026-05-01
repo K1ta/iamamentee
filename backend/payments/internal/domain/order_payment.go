@@ -58,3 +58,27 @@ func (p *OrderPayment) SetFailed() error {
 	p.Status = PaymentStatusFailed
 	return nil
 }
+
+func (p *OrderPayment) SetCompensating() error {
+	if p.Status != PaymentStatusDone {
+		return fmt.Errorf("cannot set compensating from status %s", p.Status)
+	}
+	p.Status = PaymentStatusCompensating
+	return nil
+}
+
+func (p *OrderPayment) SetCompensated() error {
+	if p.Status != PaymentStatusCompensating {
+		return fmt.Errorf("cannot set compensated from status %s", p.Status)
+	}
+	p.Status = PaymentStatusCompensated
+	return nil
+}
+
+func (p *OrderPayment) SetCanceled() error {
+	if p.Status != PaymentStatusCompensated {
+		return fmt.Errorf("cannot set canceled from status %s", p.Status)
+	}
+	p.Status = PaymentStatusCanceled
+	return nil
+}
