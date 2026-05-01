@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"delivery/internal/app"
 	"delivery/internal/infra/client/orders"
+	"delivery/internal/infra/client/payments"
 	"delivery/internal/infra/config"
 	"delivery/internal/infra/storage/postgres"
 	"delivery/internal/service"
 	"delivery/internal/transport/httpapi"
+	failingworker "delivery/internal/workers/failing"
 	ordersworker "delivery/internal/workers/orders"
 	"fmt"
 	"log/slog"
@@ -42,18 +44,21 @@ var serverCmd = &cobra.Command{
 
 		orderDeliveryRepo := postgres.NewOrderDeliveryRepository(db)
 		ordersClient := orders.NewClient(cfg.OrdersURL)
-		orderDeliveryService := service.NewOrderDeliveryService(orderDeliveryRepo, ordersClient, service.Config{
-			MaxAttempts: cfg.MaxAttempts,
-			IntervalSec: cfg.OrdersWorkerConfig.IntervalSec,
+		paymentsClient := payments.NewClient(cfg.PaymentsURL)
+		orderDeliveryService := service.NewOrderDeliveryService(orderDeliveryRepo, ordersClient, paymentsClient, service.Config{
+			MaxAttempts:        cfg.MaxAttempts,
+			IntervalSec:        cfg.OrdersWorkerConfig.IntervalSec,
+			FailingIntervalSec: cfg.FailingWorkerConfig.IntervalSec,
 		})
 
 		worker := ordersworker.NewOrdersWorker(orderDeliveryService, cfg.OrdersWorkerConfig.PauseWhenNoWork)
+		fWorker := failingworker.NewFailingWorker(orderDeliveryService, cfg.FailingWorkerConfig.PauseWhenNoWork)
 
 		handler := httpapi.NewDeliveryHandler(orderDeliveryService)
 		router := httpapi.NewRouter(handler)
 		server := httpapi.NewServer(cfg.Listen, router, time.Second*5)
 
-		a := app.NewServerApp(dbs, server, worker)
+		a := app.NewServerApp(dbs, server, worker, fWorker)
 		return a.Run(cmd.Context())
 	},
 }

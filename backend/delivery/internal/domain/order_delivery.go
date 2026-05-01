@@ -47,3 +47,11 @@ func (d *OrderDelivery) SetDone() error {
 	d.Status = DeliveryStatusDone
 	return nil
 }
+
+func (d *OrderDelivery) SetFailed() error {
+	if d.Status != DeliveryStatusFailing {
+		return fmt.Errorf("cannot set failed from status %s", d.Status)
+	}
+	d.Status = DeliveryStatusFailed
+	return nil
+}
