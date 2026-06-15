@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: runner
+  namespace: k6
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: runner
+  template:
+    metadata:
+      labels:
+        app: runner
+    spec:
+      containers:
+        - name: k6
+          image: grafana/k6
+          command: ["sleep", "infinity"]
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          resources:
+            limits:
+              cpu: "2"
+              memory: 1Gi
+            requests:
+              cpu: "500m"
+              memory: 512Mi
+      volumes:
+        - name: scripts
+          configMap:
+            name: scripts

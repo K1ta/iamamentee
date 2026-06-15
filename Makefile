@@ -107,6 +107,9 @@ apply:
 port-forward-%:
 	kubectl port-forward svc/$* 8080:80 -n $*
 
+pf-k6:
+	kubectl port-forward deployment/runner 5665:5665 -n k6
+
 logs-%:
 	kubectl logs -f -l app=$* -n $*
 

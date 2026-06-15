@@ -107,7 +107,7 @@ func (s *OrderService) StartNextOrder(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("set processing: %w", err)
 	}
 
-	if err := s.repo.UpdateStatus(ctx, order, prevStatus, 0); err != nil {
+	if err := s.repo.UpdateStatus(ctx, order, prevStatus, 0); err != nil { // todo set -1 for max_attempts
 		return false, fmt.Errorf("update status: %w", err)
 	}
 	return true, nil

@@ -82,3 +82,239 @@ MIGRATOR_EXCLUDED_PREV_SHARDS=postgres-0,postgres1
 ```
 
 При первом запуске все эти переменные нужно оставить пустыми.
+
+## Тестирование shared_buffers
+
+Посмотреть параметры постгреса:
+```sql
+SELECT name, pg_size_pretty(setting::BIGINT * 
+    CASE unit 
+        WHEN '8kB' THEN 8192
+        WHEN 'kB' THEN 1024
+        ELSE 1
+    END
+) AS size
+FROM pg_settings
+WHERE name IN ('shared_buffers', 'work_mem', 'effective_cache_size', 'maintenance_work_mem');
+```
+
+Запрос для генерации записей в orders:
+```sql
+INSERT INTO orders (user_id, status, attempts, max_attempts, next_attempt_after)
+SELECT
+    (random() * 1000000)::BIGINT,
+    'processing',
+    0,
+    -1,
+    now()
+FROM generate_series(1, 50000000);
+
+INSERT INTO items (order_id, product_id, amount, price)
+SELECT
+    o.id,
+    (random() * 100000)::BIGINT,
+    (random() * 10)::INT + 1,
+    (random() * 10000)::BIGINT + 100
+FROM orders o;
+```
+
+Сброс page cache:
+```shell
+minikube ssh
+sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
+```
+
+Рестарт postgres пода:
+```shell
+kubectl rollout restart -n orders-infra statefulset/postgres
+```
+
+Очистка метрик перед стартом:
+```sql
+SELECT pg_stat_reset();
+```
+
+Просмотр, что лежит в кеше
+```sql
+CREATE EXTENSION pg_buffercache;
+
+SELECT
+    c.relname,
+    count(*) AS buffers_in_cache,
+    pg_size_pretty(count(*) * 8192) AS size_in_cache
+FROM pg_buffercache b
+JOIN pg_class c ON c.relfilenode = b.relfilenode
+WHERE c.relname IN ('orders', 'items', 'items_order_id_idx', 'orders_pkey')
+GROUP BY c.relname
+ORDER BY buffers_in_cache DESC;
+```
+
+Запрос для снятия метрик:
+```sql
+SELECT
+    relname,
+    heap_blks_read,
+    heap_blks_hit,
+    round(
+        heap_blks_hit::numeric / nullif(heap_blks_hit + heap_blks_read, 0) * 100,
+        2
+    ) AS heap_hit_pct,
+    idx_blks_read,
+    idx_blks_hit,
+    round(
+        idx_blks_hit::numeric / nullif(idx_blks_hit + idx_blks_read, 0) * 100,
+        2
+    ) AS idx_hit_pct
+FROM pg_statio_user_tables
+WHERE relname IN ('orders', 'items');
+```
+
+Запуск k6 скрипта:
+```shell
+K6_WEB_DASHBOARD=true \
+K6_WEB_DASHBOARD_HOST=0.0.0.0 \
+nohup k6 run /scripts/load_test.js > /tmp/k6.log 2>&1 & \
+echo $!
+```
+
+### Итерация первая
+
+Настройки постгрес:
+```
+         name         |  size
+----------------------+---------
+ effective_cache_size | 4096 MB
+ maintenance_work_mem | 64 MB
+ shared_buffers       | 128 MB
+ work_mem             | 4096 kB
+```
+
+Значение перед стартом:
+```
+ relname | heap_blks_read | heap_blks_hit | cache_hit_pct
+---------+----------------+---------------+---------------
+ orders  |              0 |             0 |
+ items   |              0 |             0 |
+```
+
+T=30s
+```
+ relname | heap_blks_read | heap_blks_hit | cache_hit_pct
+---------+----------------+---------------+---------------
+ orders  |         127423 |          1072 |          0.83
+ items   |         127305 |          1190 |          0.93
+```
+
+T=1m30s
+```
+ relname | heap_blks_read | heap_blks_hit | cache_hit_pct
+---------+----------------+---------------+---------------
+ orders  |         396008 |          3325 |          0.83
+ items   |         395610 |          3724 |          0.93
+```
+
+T=6m (добавил статистику по индексам)
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |        1693176 |         14193 |         0.83 |       1659998 |      5170156 |       75.70
+ items   |        1691496 |         15875 |         0.93 |       1660025 |      5170807 |       75.70
+ ```
+
+ ### Итерация вторая. Добавил памяти в shared_buffers
+
+ Параметры постгреса:
+ ```
+          name         |  size
+----------------------+---------
+ effective_cache_size | 9216 MB
+ maintenance_work_mem | 64 MB
+ shared_buffers       | 6144 MB
+ work_mem             | 4096 kB
+ ```
+
+T=0:
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |              0 |             0 |              |             0 |            0 |
+ items   |              0 |             0 |              |             0 |            0 |
+```
+
+T=30s
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |         115708 |         17358 |        13.04 |         85289 |       447104 |       83.98
+ items   |         113794 |         19272 |        14.48 |         85465 |       447057 |       83.95
+```
+
+T=1m30s
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |         245722 |        103452 |        29.63 |        126512 |      1270544 |       90.94
+ items   |         236382 |        112792 |        32.30 |        126378 |      1271038 |       90.96
+```
+
+T=2m30s
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |         250959 |        109286 |        30.34 |        127338 |      1314465 |       91.17
+ items   |         241154 |        119091 |        33.06 |        127260 |      1315366 |       91.18
+```
+
+Итог - упал, стало не хватать памяти. RPS снизилось с ~5k до 150
+
+### Итерация третья - уменьшил shared_buffers
+
+ Параметры постгреса:
+ ```
+          name         |  size
+----------------------+---------
+ effective_cache_size | 7168 MB
+ maintenance_work_mem | 64 MB
+ shared_buffers       | 3072 MB
+ work_mem             | 4096 kB
+ ```
+
+T=30s
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |         118050 |         17779 |        13.09 |         86571 |       456903 |       84.07
+ items   |         116086 |         19743 |        14.54 |         86653 |       456979 |       84.06
+```
+
+T=1m30s
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |         326576 |         82865 |        20.24 |        188551 |      1449371 |       88.49
+ items   |         317715 |         91726 |        22.40 |        188672 |      1449408 |       88.48
+```
+
+T=2m30s
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |         532827 |        147233 |        21.65 |        288515 |      2431903 |       89.39
+ items   |         517137 |        162923 |        23.96 |        288589 |      2432007 |       89.39
+```
+
+T=7m
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |        1494063 |        446295 |        23.00 |        754429 |      7007449 |       90.28
+ items   |        1446820 |        493539 |        25.44 |        754459 |      7007865 |       90.28
+```
+
+T=9m30s
+```
+ relname | heap_blks_read | heap_blks_hit | heap_hit_pct | idx_blks_read | idx_blks_hit | idx_hit_pct
+---------+----------------+---------------+--------------+---------------+--------------+-------------
+ orders  |        1983125 |        598641 |        23.19 |        991384 |      9336311 |       90.40
+ items   |        1919706 |        662054 |        25.64 |        991824 |      9336470 |       90.40
+```

@@ -26,6 +26,15 @@ spec:
               value: password
             - name: POSTGRES_DB
               value: orders
+          args:
+            - "-c"
+            - "shared_buffers=5GB"
+            - "-c"
+            - "effective_cache_size=7GB"
+            - "-c"
+            - "bgwriter_lru_maxpages=200"
+            - "-c"
+            - "bgwriter_delay=50ms"
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data

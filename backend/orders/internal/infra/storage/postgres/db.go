@@ -17,6 +17,12 @@ func NewDB(cfg *config.PostgresConfig) (*sql.DB, error) {
 		return nil, fmt.Errorf("open: %w", err)
 	}
 
+	// TODO move to config
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(time.Minute)
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {

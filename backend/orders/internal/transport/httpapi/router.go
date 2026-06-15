@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/time/rate"
 )
 
 type userIDContextKey struct{}
@@ -18,6 +19,7 @@ func NewRouter(orderHandler *OrderHandler) chi.Router {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RequestLogger(&middleware.DefaultLogFormatter{Logger: slog.NewLogLogger(slog.Default().Handler(), slog.LevelInfo)}))
+	r.Use(RateLimitMiddleware(rate.NewLimiter(4000, 500)))
 	r.Route("/orders", func(r chi.Router) {
 		r.Use(FakeAuthMiddleware)
 		r.Post("/create", orderHandler.Create)
@@ -39,6 +41,18 @@ func FakeAuthMiddleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), userIDContextKey{}, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func RateLimitMiddleware(limiter *rate.Limiter) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !limiter.Allow() {
+				http.Error(w, "too many requests", http.StatusTooManyRequests)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func MustGetUserID(ctx context.Context) int64 {
